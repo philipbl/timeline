@@ -66,13 +66,16 @@ def get_text_box(text, draw, font, x_pos, y_pos):
     return (x_start, y_start), (x_end, y_end)
 
 
-def intersects(box1, box2):
-    return not (
-        box1[0][0] > box2[1][0] + 100
-        or box1[1][0] < box2[0][0]
-        or box1[0][1] > box2[1][1]
-        or box1[1][1] < box2[0][1]
-    )
+def intersects(box1, boxes):
+    def _intersect(box1, box2):
+        return not (
+            box1[0][0] > box2[1][0] + 100
+            or box1[1][0] < box2[0][0]
+            or box1[0][1] > box2[1][1]
+            or box1[1][1] < box2[0][1]
+        )
+
+    return any(_intersect(box1, box2) for box2 in boxes)
 
 
 def draw_events(
@@ -104,29 +107,15 @@ def draw_events(
             fill="red",
         )
 
+        y_pos -= y_offset
+
         # Calculate location of text
-        box = get_text_box(event_text, draw, event_font, x_pos, y_pos - y_offset)
+        box = get_text_box(event_text, draw, event_font, x_pos, y_pos)
 
         # Check to see if there is something already overlapping
-        i = 0
-        for event_box in event_boxes:
-            if intersects(box, event_box):
-                i += 1
-                box = get_text_box(
-                    event_text,
-                    draw,
-                    event_font,
-                    x_pos,
-                    y_pos - y_offset - (y_offset_spacing * i),
-                )
-
-        if i == 1:
-            # This means the text got shifted up for the first time
-            draw.line(
-                [(x_pos, y_pos), (x_pos, y_pos - y_offset_spacing)],
-                fill="black",
-                width=tick_width,
-            )
+        while intersects(box, event_boxes):
+            y_pos -= y_offset_spacing
+            box = get_text_box(event_text, draw, event_font, x_pos, y_pos,)
 
         # Keep list of sizes of the text
         event_boxes.append(box)
@@ -138,7 +127,6 @@ def draw_events(
 
 
 def draw_main_line(draw, start_x_pos, end_x_pos, y_pos, width):
-    # Draw main timeline
     draw.line(
         [(start_x_pos, y_pos), (end_x_pos, y_pos)], fill="black", width=width,
     )
