@@ -30,6 +30,7 @@ def draw_ticks(
     start_y_pos,
     tick_length,
     tick_width,
+    date_space,
     date_font,
 ):
     y_pos = start_y_pos
@@ -47,7 +48,7 @@ def draw_ticks(
         text_length, text_height = draw.textsize(date_text, font=date_font)
 
         draw.text(
-            (x_pos - text_length / 2, y_pos + 100),
+            (x_pos - text_length / 2, y_pos + date_space),
             text=date_text,
             fill="black" if not is_weekend_or_holiday(cur_date) else "gray",
             font=date_font,
@@ -149,6 +150,7 @@ def draw_sub_timeline(
     tick_width,
     tick_length,
     date_font,
+    date_space,
     event_y_offset,
     event_y_offset_spacing,
     dot_size,
@@ -167,6 +169,7 @@ def draw_sub_timeline(
         start_y_pos=y_pos,
         tick_width=tick_width,
         tick_length=tick_length,
+        date_space=date_space,
         date_font=date_font,
     )
 
@@ -211,16 +214,14 @@ def split(start_date, end_date, events, max_days=15):
 
 
 def draw_timeline(start_date, end_date, events, file_name):
-    event_font = ImageFont.truetype(FONT_FILE, 120)
-
-    day_size = 500
-    h_margins = get_h_margin(events, event_font)
-    v_margins = 1000
+    event_font = ImageFont.truetype(FONT_FILE, 55)
     max_days = 15
+    day_size = 200
+    rows = math.ceil((end_date - start_date).days / max_days)
+    h_margins = 150
+    v_margins = (8.5 * 300) / (rows + 1)
 
-    im = Image.new(
-        "RGBA", (max_days * day_size + h_margins * 2, v_margins * 6), color="white"
-    )
+    im = Image.new("RGBA", (int(11 * 300), int(8.5 * 300)), color="white")
     draw = ImageDraw.Draw(im)
 
     for i, (sub_start_date, sub_end_date, sub_events) in enumerate(
@@ -238,16 +239,17 @@ def draw_timeline(start_date, end_date, events, file_name):
             start_x_pos=h_margins,
             end_x_pos=h_margins + (time_diff + extra) * day_size,
             y_pos=v_margins * (i + 1),
-            timeline_width=25,
+            timeline_width=10,
             start_date=sub_start_date,
             time_diff=time_diff,
             day_size=day_size,
-            tick_width=20,
-            tick_length=60,
-            date_font=ImageFont.truetype(FONT_FILE, 120),
-            event_y_offset=120,
-            event_y_offset_spacing=170,
-            dot_size=60,
+            tick_width=10,
+            tick_length=40,
+            date_font=ImageFont.truetype(FONT_FILE, 55),
+            event_y_offset=60,
+            event_y_offset_spacing=90,
+            dot_size=30,
+            date_space=40,
             event_font=event_font,
         )
 
