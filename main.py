@@ -101,7 +101,7 @@ def draw_events(
                 (x_pos - dot_size / 2, y_pos - dot_size / 2),
                 (x_pos + dot_size / 2, y_pos + dot_size / 2),
             ],
-            fill="black",
+            fill="red",
         )
 
         # Calculate location of text
@@ -133,7 +133,7 @@ def draw_events(
         # draw.rectangle(event_boxes[-1], outline="black", width=5)
 
         draw.multiline_text(
-            box[0], text=event_text, fill="black", font=event_font, align="center",
+            box[0], text=event_text, fill="red", font=event_font, align="center",
         )
 
 
