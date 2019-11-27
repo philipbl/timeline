@@ -1,3 +1,5 @@
+import math
+
 import arrow
 import click
 import holidays
@@ -86,7 +88,7 @@ def draw_events(
 ):
     event_boxes = []
     for event in events:
-        days_offset = (event[0] - start_date).days + 1
+        days_offset = (event[0] - start_date).days
         event_text = event[1]
 
         x_pos = start_x_pos + days_offset * day_size
@@ -127,26 +129,33 @@ def draw_events(
     print(event_boxes)
 
 
-def draw_timeline(start_date, end_date, events, file_name):
-    event_font = ImageFont.truetype(FONT_FILE, 120)
-
-    time_diff = (end_date - start_date).days + 1
-    day_size = 500
-    h_margins = get_h_margin(events, event_font)
-    v_margins = 1000
-
-    timeline_width = 25
-
-    im = Image.new(
-        "RGBA", (time_diff * day_size + h_margins * 2, v_margins * 2), color="white"
-    )
-    draw = ImageDraw.Draw(im)
-
+def draw_main_line(draw, start_x_pos, end_x_pos, y_pos, width):
     # Draw main timeline
     draw.line(
-        [(h_margins, v_margins), (im.size[0] - h_margins, v_margins)],
-        fill="black",
-        width=timeline_width,
+        [(start_x_pos, y_pos), (end_x_pos, y_pos)], fill="black", width=width,
+    )
+
+
+def draw_sub_timeline(
+    draw,
+    events,
+    start_x_pos,
+    end_x_pos,
+    y_pos,
+    timeline_width,
+    start_date,
+    time_diff,
+    day_size,
+    tick_width,
+    tick_length,
+    date_font,
+    event_y_offset,
+    event_y_offset_spacing,
+    dot_size,
+    event_font,
+):
+    draw_main_line(
+        draw, start_x_pos, end_x_pos, y_pos, width=timeline_width,
     )
 
     draw_ticks(
@@ -154,25 +163,93 @@ def draw_timeline(start_date, end_date, events, file_name):
         start_date=start_date,
         time_diff=time_diff,
         day_size=day_size,
-        start_x_pos=h_margins,
-        start_y_pos=v_margins,
-        tick_width=20,
-        tick_length=60,
-        date_font=ImageFont.truetype(FONT_FILE, 120),
+        start_x_pos=start_x_pos,
+        start_y_pos=y_pos,
+        tick_width=tick_width,
+        tick_length=tick_length,
+        date_font=date_font,
     )
 
     draw_events(
         events,
         start_date=start_date,
         draw=draw,
-        start_x_pos=h_margins,
-        start_y_pos=v_margins,
-        y_offset=120,
-        y_offset_spacing=170,
+        start_x_pos=start_x_pos,
+        start_y_pos=y_pos,
+        y_offset=event_y_offset,
+        y_offset_spacing=event_y_offset_spacing,
         day_size=day_size,
-        dot_size=60,
+        dot_size=dot_size,
         event_font=event_font,
     )
+
+
+def get_events(start, end, events):
+    for e in events:
+        if start < e[0] < end:
+            yield e
+
+
+def split(start_date, end_date, events, max_days=15):
+    time_diff = (end_date - start_date).days + 1
+    groups = math.ceil(time_diff / max_days)
+
+    for i in range(1, groups + 1):
+        new_end_date = start_date.shift(days=max_days - 1)
+
+        if end_date < new_end_date:
+            new_end_date = end_date
+            new_end_date = new_end_date.shift(days=+1)
+
+        print(start_date, new_end_date, new_end_date - start_date)
+        yield (
+            start_date,
+            new_end_date,
+            list(get_events(start_date, new_end_date, events)),
+        )
+        start_date = new_end_date.shift(days=+1)
+
+
+def draw_timeline(start_date, end_date, events, file_name):
+    event_font = ImageFont.truetype(FONT_FILE, 120)
+
+    day_size = 500
+    h_margins = get_h_margin(events, event_font)
+    v_margins = 1000
+    max_days = 15
+
+    im = Image.new(
+        "RGBA", (max_days * day_size + h_margins * 2, v_margins * 6), color="white"
+    )
+    draw = ImageDraw.Draw(im)
+
+    for i, (sub_start_date, sub_end_date, sub_events) in enumerate(
+        split(start_date, end_date, events, max_days=max_days)
+    ):
+        time_diff = (sub_end_date - sub_start_date).days
+
+        extra = 0
+        if time_diff == max_days - 1:
+            extra = 1
+
+        draw_sub_timeline(
+            draw,
+            events=sub_events,
+            start_x_pos=h_margins,
+            end_x_pos=h_margins + (time_diff + extra) * day_size,
+            y_pos=v_margins * (i + 1),
+            timeline_width=25,
+            start_date=sub_start_date,
+            time_diff=time_diff,
+            day_size=day_size,
+            tick_width=20,
+            tick_length=60,
+            date_font=ImageFont.truetype(FONT_FILE, 120),
+            event_y_offset=120,
+            event_y_offset_spacing=170,
+            dot_size=60,
+            event_font=event_font,
+        )
 
     im.save(file_name, dpi=(300, 300))
 
