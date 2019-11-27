@@ -127,8 +127,6 @@ def draw_events(
             box[0], text=event_text, fill="black", font=event_font, align="center",
         )
 
-    print(event_boxes)
-
 
 def draw_main_line(draw, start_x_pos, end_x_pos, y_pos, width):
     # Draw main timeline
@@ -189,7 +187,7 @@ def draw_sub_timeline(
 
 def get_events(start, end, events):
     for e in events:
-        if start < e[0] < end:
+        if start <= e[0] <= end:
             yield e
 
 
@@ -202,9 +200,11 @@ def split(start_date, end_date, events, max_days=15):
 
         if end_date < new_end_date:
             new_end_date = end_date
-            new_end_date = new_end_date.shift(days=+1)
+            # new_end_date = new_end_date.shift(days=+1)
 
-        print(start_date, new_end_date, new_end_date - start_date)
+        print(
+            start_date, new_end_date, new_end_date - start_date,
+        )
         yield (
             start_date,
             new_end_date,
@@ -228,10 +228,12 @@ def draw_timeline(start_date, end_date, events, file_name):
         split(start_date, end_date, events, max_days=max_days)
     ):
         time_diff = (sub_end_date - sub_start_date).days
+        print(time_diff)
 
-        extra = 0
-        if time_diff == max_days - 1:
+        if sub_end_date != end_date:
             extra = 1
+        else:
+            extra = 0
 
         draw_sub_timeline(
             draw,
