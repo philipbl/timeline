@@ -72,16 +72,16 @@ def intersects(box1, box2):
     )
 
 
-def draw_timeline(start_date, end_date, events, file_name, scale_factor=1):
-    event_font = ImageFont.truetype(FONT_FILE, int(150 * scale_factor))
+def draw_timeline(start_date, end_date, events, file_name):
+    event_font = ImageFont.truetype(FONT_FILE, 120)
 
     time_diff = (end_date - start_date).days + 1
-    day_size = int(500 * scale_factor)
+    day_size = 500
     h_margins = get_h_margin(events, event_font)
     v_margins = 1000
-    dot_size = int(80 * scale_factor)
+    dot_size = 60
 
-    timeline_width = int(30 * scale_factor)
+    timeline_width = 25
 
     im = Image.new(
         "RGBA", (time_diff * day_size + h_margins * 2, v_margins * 2), color="white"
@@ -102,9 +102,9 @@ def draw_timeline(start_date, end_date, events, file_name, scale_factor=1):
         day_size=day_size,
         start_x_pos=h_margins,
         start_y_pos=v_margins,
-        tick_width=int(20 * scale_factor),
+        tick_width=20,
         tick_length=60,
-        date_font=ImageFont.truetype(FONT_FILE, int(150 * scale_factor)),
+        date_font=ImageFont.truetype(FONT_FILE, 120),
     )
 
     # Draw events
@@ -132,7 +132,7 @@ def draw_timeline(start_date, end_date, events, file_name, scale_factor=1):
         # Check to see if there is something already overlapping
         for event_box in event_boxes:
             if intersects(box, event_box):
-                y_offset += 120
+                y_offset += 170
                 box = get_text_box(
                     event_text, draw, event_font, x_pos, y_pos - y_offset
                 )
@@ -169,7 +169,7 @@ def main(events, start, end):
     else:
         end = events[-1][0]
 
-    draw_timeline(start, end, events, "timeline.png", scale_factor=0.5)
+    draw_timeline(start, end, events, "timeline.png")
 
 
 if __name__ == "__main__":
