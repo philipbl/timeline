@@ -86,6 +86,7 @@ def draw_events(
     day_size,
     dot_size,
     event_font,
+    tick_width,
 ):
     event_boxes = []
     for event in events:
@@ -118,6 +119,14 @@ def draw_events(
                     x_pos,
                     y_pos - y_offset - (y_offset_spacing * i),
                 )
+
+        if i == 1:
+            # This means the text got shifted up for the first time
+            draw.line(
+                [(x_pos, y_pos), (x_pos, y_pos - y_offset_spacing)],
+                fill="black",
+                width=tick_width,
+            )
 
         # Keep list of sizes of the text
         event_boxes.append(box)
@@ -182,6 +191,7 @@ def draw_sub_timeline(
         day_size=day_size,
         dot_size=dot_size,
         event_font=event_font,
+        tick_width=tick_width,
     )
 
 
@@ -200,7 +210,6 @@ def split(start_date, end_date, events, max_days=15):
 
         if end_date < new_end_date:
             new_end_date = end_date
-            # new_end_date = new_end_date.shift(days=+1)
 
         print(
             start_date, new_end_date, new_end_date - start_date,
