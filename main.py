@@ -72,6 +72,61 @@ def intersects(box1, box2):
     )
 
 
+def draw_events(
+    events,
+    start_date,
+    draw,
+    start_x_pos,
+    start_y_pos,
+    y_offset,
+    y_offset_spacing,
+    day_size,
+    dot_size,
+    event_font,
+):
+    event_boxes = []
+    for event in events:
+        days_offset = (event[0] - start_date).days + 1
+        event_text = event[1]
+
+        x_pos = start_x_pos + days_offset * day_size
+        y_pos = start_y_pos
+
+        draw.ellipse(
+            [
+                (x_pos - dot_size / 2, y_pos - dot_size / 2),
+                (x_pos + dot_size / 2, y_pos + dot_size / 2),
+            ],
+            fill="black",
+        )
+
+        # Calculate location of text
+        box = get_text_box(event_text, draw, event_font, x_pos, y_pos - y_offset)
+
+        # Check to see if there is something already overlapping
+        i = 0
+        for event_box in event_boxes:
+            if intersects(box, event_box):
+                i += 1
+                box = get_text_box(
+                    event_text,
+                    draw,
+                    event_font,
+                    x_pos,
+                    y_pos - y_offset - (y_offset_spacing * i),
+                )
+
+        # Keep list of sizes of the text
+        event_boxes.append(box)
+        # draw.rectangle(event_boxes[-1], outline="black", width=5)
+
+        draw.multiline_text(
+            box[0], text=event_text, fill="black", font=event_font, align="center",
+        )
+
+    print(event_boxes)
+
+
 def draw_timeline(start_date, end_date, events, file_name):
     event_font = ImageFont.truetype(FONT_FILE, 120)
 
@@ -79,7 +134,6 @@ def draw_timeline(start_date, end_date, events, file_name):
     day_size = 500
     h_margins = get_h_margin(events, event_font)
     v_margins = 1000
-    dot_size = 60
 
     timeline_width = 25
 
@@ -107,45 +161,19 @@ def draw_timeline(start_date, end_date, events, file_name):
         date_font=ImageFont.truetype(FONT_FILE, 120),
     )
 
-    # Draw events
-    event_boxes = []
-    for event in events:
-        days_offset = (event[0] - start_date).days + 1
-        event_text = event[1]
+    draw_events(
+        events,
+        start_date=start_date,
+        draw=draw,
+        start_x_pos=h_margins,
+        start_y_pos=v_margins,
+        y_offset=120,
+        y_offset_spacing=170,
+        day_size=day_size,
+        dot_size=60,
+        event_font=event_font,
+    )
 
-        x_pos = h_margins + days_offset * day_size
-        y_pos = v_margins
-
-        draw.ellipse(
-            [
-                (x_pos - dot_size / 2, y_pos - dot_size / 2),
-                (x_pos + dot_size / 2, y_pos + dot_size / 2),
-            ],
-            fill="black",
-        )
-
-        y_offset = 120
-
-        # Calculate location of text
-        box = get_text_box(event_text, draw, event_font, x_pos, y_pos - y_offset)
-
-        # Check to see if there is something already overlapping
-        for event_box in event_boxes:
-            if intersects(box, event_box):
-                y_offset += 170
-                box = get_text_box(
-                    event_text, draw, event_font, x_pos, y_pos - y_offset
-                )
-
-        # Keep list of sizes of the text
-        event_boxes.append(box)
-        # draw.rectangle(event_boxes[-1], outline="black", width=5)
-
-        draw.multiline_text(
-            box[0], text=event_text, fill="black", font=event_font, align="center",
-        )
-
-    print(event_boxes)
     im.save(file_name, dpi=(300, 300))
 
 
