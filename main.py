@@ -9,8 +9,8 @@ FONT_FILE = "Roboto-Regular.ttf"
 us_holidays = holidays.UnitedStates()
 
 
-def is_weekend_or_holiday(date):
-    return date.weekday() in [5, 6] or date.datetime in us_holidays
+def is_weekend_or_holiday(date, exclude):
+    return date.weekday() in [5, 6] or date.datetime in us_holidays or date in exclude
 
 
 def get_h_margin(events, font, extra_margin=100):
@@ -32,6 +32,7 @@ def draw_ticks(
     tick_width,
     date_space,
     date_font,
+    exclude,
 ):
     y_pos = start_y_pos
     # Draw ticks for each day
@@ -50,7 +51,7 @@ def draw_ticks(
         draw.text(
             (x_pos - text_length / 2, y_pos + date_space),
             text=date_text,
-            fill="black" if not is_weekend_or_holiday(cur_date) else "gray",
+            fill="black" if not is_weekend_or_holiday(cur_date, exclude) else "gray",
             font=date_font,
         )
 
@@ -150,6 +151,7 @@ def draw_sub_timeline(
     event_y_offset_spacing,
     dot_size,
     event_font,
+    exclude,
 ):
     draw_main_line(
         draw, start_x_pos, end_x_pos, y_pos, width=timeline_width,
@@ -166,6 +168,7 @@ def draw_sub_timeline(
         tick_length=tick_length,
         date_space=date_space,
         date_font=date_font,
+        exclude=exclude,
     )
 
     draw_events(
@@ -210,7 +213,7 @@ def split(start_date, end_date, events, max_days=15):
         start_date = new_end_date.shift(days=+1)
 
 
-def draw_timeline(start_date, end_date, events, file_name):
+def draw_timeline(start_date, end_date, events, file_name, exclude):
     event_font = ImageFont.truetype(FONT_FILE, 55)
     max_days = 15
     day_size = 200
@@ -250,6 +253,7 @@ def draw_timeline(start_date, end_date, events, file_name):
             dot_size=30,
             date_space=40,
             event_font=event_font,
+            exclude=exclude,
         )
 
     im.save(file_name, dpi=(300, 300))
@@ -259,7 +263,9 @@ def draw_timeline(start_date, end_date, events, file_name):
 @click.argument("events", nargs=-1)
 @click.option("--start")
 @click.option("--end")
-def main(events, start, end):
+@click.option("--exclude", multiple=True)
+@click.option("--filename", default="timeline.png")
+def main(events, start, end, exclude, filename):
     # Parse the events
     events = (e.split(" ", 1) for e in events)
     events = ((arrow.get(day), name) for day, name in events)
@@ -275,7 +281,9 @@ def main(events, start, end):
     else:
         end = events[-1][0]
 
-    draw_timeline(start, end, events, "timeline.png")
+    exclude = [arrow.get(e) for e in exclude]
+
+    draw_timeline(start, end, events, filename, exclude)
 
 
 if __name__ == "__main__":
