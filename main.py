@@ -264,8 +264,12 @@ def draw_timeline(start_date, end_date, events, file_name, exclude):
 @click.option("--start")
 @click.option("--end")
 @click.option("--exclude", multiple=True)
-@click.option("--filename", default="timeline.png")
-def main(events, start, end, exclude, filename):
+@click.option("--file_name", default="timeline.png")
+def main(events, start, end, exclude, file_name):
+    if len(events) == 0:
+        print("You must pass in at least one event")
+        exit()
+
     # Parse the events
     events = (e.split(" ", 1) for e in events)
     events = ((arrow.get(day), name) for day, name in events)
@@ -283,7 +287,7 @@ def main(events, start, end, exclude, filename):
 
     exclude = [arrow.get(e) for e in exclude]
 
-    draw_timeline(start, end, events, filename, exclude)
+    draw_timeline(start, end, events, file_name, exclude)
 
 
 if __name__ == "__main__":
