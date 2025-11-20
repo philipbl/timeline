@@ -1,108 +1,109 @@
-import math
-import re
-from datetime import datetime
+"""
+CLI tool for generating timeline PDFs from YAML configuration files.
+
+Usage:
+    python cli.py config.yaml
+    python cli.py config.yaml --output my_timeline.pdf
+"""
+
+import sys
+from pathlib import Path
 
 import arrow
 import click
-import holidays
-from PIL import Image, ImageDraw, ImageFont
+import yaml
 
-from timeline import draw_timeline
+from timeline import Event, create_timeline
 
 
 @click.command()
-@click.argument("events", nargs=-1)
-@click.option("--start")
-@click.option("--end")
-@click.option("--exclude", multiple=True)
-@click.option("--file_name", default="timeline.png")
-def main(events, start, end, exclude, file_name):
-    if len(events) == 0:
-        print("You must pass in at least one event")
-        exit()
+@click.argument("config_file", type=click.Path(exists=True))
+@click.option(
+    "--output",
+    "-o",
+    default="timeline.pdf",
+    help="Output PDF filename (default: timeline.pdf)",
+)
+def main(config_file, output):
+    """Generate a timeline PDF from a YAML configuration file.
 
-    # Parse the events. Support three input styles:
-    #  - Single quoted string: "2025-11-25 event name"
-    #  - Separate tokens: 11/24 test
-    #  - Short dates like MM/DD or MM/DD/YY (assume current century/year)
+    CONFIG_FILE: Path to the YAML configuration file containing events and settings.
+    """
 
-    def normalize_day(day_str):
-        # Build Arrow objects anchored at local midnight to avoid UTC->local shifts.
-        local_tz = arrow.now().tzinfo
+    # Load and parse the YAML configuration
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
 
-        # MM/DD -> assume current year
-        m = re.match(r"^(\d{1,2})/(\d{1,2})$", day_str)
-        if m:
-            month, day = m.groups()
-            dt = datetime(datetime.now().year, int(month), int(day), tzinfo=local_tz)
-            return arrow.get(dt)
+    if not config:
+        click.echo("Error: Configuration file is empty", err=True)
+        sys.exit(1)
 
-        m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2})$", day_str)
-        if m:
-            month, day, yy = m.groups()
-            year = 2000 + int(yy)
-            dt = datetime(year, int(month), int(day), tzinfo=local_tz)
-            return arrow.get(dt)
+    # Parse events
+    events = []
+    event_list = config.get("events", [])
 
-        # Try arrow's parser for other formats (YYYY-MM-DD, ISO, etc.)
-        parsed = arrow.get(day_str)
-        dt = datetime(parsed.year, parsed.month, parsed.day, tzinfo=local_tz)
-        return arrow.get(dt)
+    if not event_list:
+        click.echo("Error: No events found in configuration file", err=True)
+        sys.exit(1)
 
-    # Build (day, name) pairs from tokens
-    tokens = list(events)
-    parsed = []
-    i = 0
-    while i < len(tokens):
-        token = tokens[i]
-        # If token contains a space it was passed as a single argument
-        if " " in token:
-            day, name = token.split(" ", 1)
-            parsed.append((normalize_day(day), name))
-            i += 1
+    for event_data in event_list:
+        name = event_data.get("name")
+        start_str = event_data.get("start")
+        end_str = event_data.get("end")
+
+        if not name or not start_str:
+            click.echo(f"Warning: Skipping invalid event: {event_data}", err=True)
             continue
 
-        # Otherwise treat token as date and the next token as the name (if present)
-        if i + 1 < len(tokens):
-            day = token
-            name = tokens[i + 1]
-            parsed.append((normalize_day(day), name))
-            i += 2
+        try:
+            start = arrow.get(start_str)
+            end = arrow.get(end_str) if end_str else None
+            events.append(Event(name, start, end))
+        except Exception as e:
+            click.echo(f"Warning: Could not parse event '{name}': {e}", err=True)
             continue
 
-        # Single leftover token that isn't parsable
-        raise click.UsageError(
-            f"Could not parse event token: {token}. Use 'DATE NAME' or quote the whole event."
-        )
+    if not events:
+        click.echo("Error: No valid events found in configuration file", err=True)
+        sys.exit(1)
 
-    events = sorted(parsed, key=lambda x: x[0])
+    # Parse optional timeline start/end overrides
+    timeline_start = None
+    timeline_end = None
 
-    # Normalize start/end/exclude to local midnight as well
-    local_tz = arrow.now().tzinfo
-    if start is None:
-        now = arrow.now()
-        start = arrow.get(datetime(now.year, now.month, now.day, tzinfo=local_tz))
-    else:
-        p = arrow.get(start)
-        start = arrow.get(datetime(p.year, p.month, p.day, tzinfo=local_tz))
+    if "timeline_start" in config:
+        try:
+            timeline_start = arrow.get(config["timeline_start"])
+        except Exception as e:
+            click.echo(f"Warning: Could not parse timeline_start: {e}", err=True)
 
-    if end is not None:
-        p = arrow.get(end)
-        end = arrow.get(datetime(p.year, p.month, p.day, tzinfo=local_tz))
-    else:
-        end = events[-1][0]
+    if "timeline_end" in config:
+        try:
+            timeline_end = arrow.get(config["timeline_end"])
+        except Exception as e:
+            click.echo(f"Warning: Could not parse timeline_end: {e}", err=True)
 
-    exclude = [
-        arrow.get(
-            datetime(
-                arrow.get(e).year, arrow.get(e).month, arrow.get(e).day, tzinfo=local_tz
-            )
-        )
-        for e in exclude
-    ]
+    # Parse custom holidays
+    custom_holidays = []
+    if "custom_holidays" in config:
+        for holiday_str in config["custom_holidays"]:
+            try:
+                custom_holidays.append(arrow.get(holiday_str))
+            except Exception as e:
+                click.echo(
+                    f"Warning: Could not parse holiday '{holiday_str}': {e}", err=True
+                )
 
-    with open(file_name, "wb") as f:
-        draw_timeline(start, end, events, f, exclude)
+    # Generate the timeline
+    click.echo(f"Generating timeline with {len(events)} events...")
+    create_timeline(
+        events=events,
+        output_file=output,
+        timeline_start=timeline_start,
+        timeline_end=timeline_end,
+        custom_holidays=custom_holidays,
+    )
+    click.echo(f"✓ Timeline saved to: {output}")
 
 
 if __name__ == "__main__":
