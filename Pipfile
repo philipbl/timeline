@@ -10,6 +10,8 @@ black = "*"
 pillow = "*"
 arrow = "*"
 holidays = "*"
+flask = "*"
+zappa = "*"
 
 [requires]
 python_version = "3.7"

@@ -1,0 +1,10 @@
+{
+    "dev": {
+        "app_function": "app.app",
+        "aws_region": "us-west-2",
+        "profile_name": "default",
+        "project_name": "timeline",
+        "runtime": "python3.7",
+        "s3_bucket": "zappa-cv2uqfsw3"
+    }
+}

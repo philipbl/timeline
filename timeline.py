@@ -1,7 +1,6 @@
 import math
 
 import arrow
-import click
 import holidays
 from PIL import Image, ImageDraw, ImageFont
 
@@ -256,39 +255,4 @@ def draw_timeline(start_date, end_date, events, file_name, exclude):
             exclude=exclude,
         )
 
-    im.save(file_name, dpi=(300, 300))
-
-
-@click.command()
-@click.argument("events", nargs=-1)
-@click.option("--start")
-@click.option("--end")
-@click.option("--exclude", multiple=True)
-@click.option("--file_name", default="timeline.png")
-def main(events, start, end, exclude, file_name):
-    if len(events) == 0:
-        print("You must pass in at least one event")
-        exit()
-
-    # Parse the events
-    events = (e.split(" ", 1) for e in events)
-    events = ((arrow.get(day), name) for day, name in events)
-    events = sorted(events, key=lambda x: x[0])
-
-    if start is None:
-        start = arrow.now()
-    else:
-        start = arrow.get(start)
-
-    if end is not None:
-        end = arrow.get(end)
-    else:
-        end = events[-1][0]
-
-    exclude = [arrow.get(e) for e in exclude]
-
-    draw_timeline(start, end, events, file_name, exclude)
-
-
-if __name__ == "__main__":
-    main()
+    im.save(file_name, dpi=(300, 300), format="PNG")
