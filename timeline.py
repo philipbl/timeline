@@ -52,11 +52,13 @@ class TimelineGenerator:
         output_file: str = "timeline.pdf",
         timeline_start: Optional[arrow.Arrow] = None,
         timeline_end: Optional[arrow.Arrow] = None,
-        custom_holidays: Optional[List[arrow.Arrow]] = None,
+        custom_holidays: Optional[List[Tuple[arrow.Arrow, arrow.Arrow]]] = None,
         title: Optional[str] = None,
     ):
         self.events = sorted(events, key=lambda e: e.start)
         self.output_file = output_file
+        # custom_holidays is a list of tuples: (start_date, end_date)
+        # For single-day holidays, start_date == end_date
         self.custom_holidays = custom_holidays or []
         self.us_holidays = holidays.UnitedStates()
         self.title = title
@@ -117,9 +119,9 @@ class TimelineGenerator:
         if date.date() in self.us_holidays:
             return True
 
-        # Check custom holidays
-        for holiday in self.custom_holidays:
-            if date.date() == holiday.date():
+        # Check custom holidays (supports date ranges)
+        for holiday_start, holiday_end in self.custom_holidays:
+            if holiday_start <= date <= holiday_end:
                 return True
 
         return False
@@ -162,6 +164,22 @@ class TimelineGenerator:
         # Draw main timeline bar
         start_x = self.left_margin
         end_x = start_x + (num_days * self.day_width)
+
+        # Draw gray background for weekend/holiday periods
+        for i in range(num_days + 1):
+            current_date = row_start_date.shift(days=i)
+            if self.is_weekend_or_holiday(current_date):
+                x = start_x + (i * self.day_width)
+                # Draw a light gray vertical band for this day
+                c.setFillColorRGB(0.9, 0.9, 0.9)  # Light gray
+                c.rect(
+                    x - self.day_width / 2,
+                    y_baseline - 50,
+                    self.day_width,
+                    100,
+                    fill=1,
+                    stroke=0,
+                )
 
         c.setStrokeColor(black)
         c.setLineWidth(self.timeline_height)
@@ -385,7 +403,7 @@ def create_timeline(
     output_file: str = "timeline.pdf",
     timeline_start: Optional[arrow.Arrow] = None,
     timeline_end: Optional[arrow.Arrow] = None,
-    custom_holidays: Optional[List[arrow.Arrow]] = None,
+    custom_holidays: Optional[List[Tuple[arrow.Arrow, arrow.Arrow]]] = None,
     title: Optional[str] = None,
 ) -> None:
     """
@@ -396,7 +414,7 @@ def create_timeline(
         output_file: Output PDF filename
         timeline_start: Optional override for timeline start date
         timeline_end: Optional override for timeline end date
-        custom_holidays: Optional list of custom holiday dates
+        custom_holidays: Optional list of custom holiday date ranges (start, end) tuples
         title: Optional title to display at the top of the timeline
     """
     generator = TimelineGenerator(
@@ -473,15 +491,39 @@ def main(config_file, output):
         except Exception as e:
             click.echo(f"Warning: Could not parse timeline_end: {e}", err=True)
 
-    # Parse custom holidays
+    # Parse custom holidays (supports both single dates and date ranges)
     custom_holidays = []
     if "custom_holidays" in config:
-        for holiday_str in config["custom_holidays"] or []:
+        for holiday_data in config["custom_holidays"] or []:
             try:
-                custom_holidays.append(arrow.get(holiday_str))
+                # Check if it's a string (single date) or dict (date range)
+                if isinstance(holiday_data, str):
+                    # Single date - start and end are the same
+                    date = arrow.get(holiday_data)
+                    custom_holidays.append((date, date))
+                elif isinstance(holiday_data, dict):
+                    # Date range with start and end
+                    start_str = holiday_data.get("start")
+                    end_str = holiday_data.get("end")
+                    if start_str and end_str:
+                        start = arrow.get(start_str)
+                        end = arrow.get(end_str)
+                        custom_holidays.append((start, end))
+                    elif start_str:
+                        # Only start provided, treat as single day
+                        date = arrow.get(start_str)
+                        custom_holidays.append((date, date))
+                    else:
+                        click.echo(
+                            f"Warning: Invalid holiday data: {holiday_data}", err=True
+                        )
+                else:
+                    click.echo(
+                        f"Warning: Invalid holiday format: {holiday_data}", err=True
+                    )
             except Exception as e:
                 click.echo(
-                    f"Warning: Could not parse holiday '{holiday_str}': {e}", err=True
+                    f"Warning: Could not parse holiday '{holiday_data}': {e}", err=True
                 )
 
     # Parse optional title
