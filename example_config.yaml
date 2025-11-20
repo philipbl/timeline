@@ -2,6 +2,9 @@
 #
 # This file defines events and timeline settings for generating a PDF timeline.
 
+# Optional: Add a title that appears at the top of the timeline
+title: "Project Timeline - Q4 2025"
+
 # Optional: Override the default timeline start/end dates
 # By default, the timeline starts with the first event and ends with the last event
 # timeline_start: "2025-11-01"

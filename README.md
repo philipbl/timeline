@@ -55,6 +55,9 @@ python timeline.py config.yaml -o schedule.pdf
 Create a YAML file with your events and settings:
 
 ```yaml
+# Optional: Add a title that appears at the top of the timeline
+title: "Project Timeline - Q4 2025"
+
 # Optional: Override the default timeline start/end dates
 # By default, the timeline starts with the first event and ends with the last event
 # timeline_start: "2025-11-01"
@@ -110,6 +113,7 @@ events:
 
 ### Configuration Options
 
+- `title` (optional): A title to display centered at the top of the timeline
 - `timeline_start` (optional): Force timeline to start on a specific date
 - `timeline_end` (optional): Force timeline to end on a specific date
 - `custom_holidays` (optional): List of additional dates to gray out (beyond US federal holidays)

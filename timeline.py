@@ -14,7 +14,6 @@ Usage:
 
 import math
 import sys
-from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 
 import arrow
@@ -54,11 +53,13 @@ class TimelineGenerator:
         timeline_start: Optional[arrow.Arrow] = None,
         timeline_end: Optional[arrow.Arrow] = None,
         custom_holidays: Optional[List[arrow.Arrow]] = None,
+        title: Optional[str] = None,
     ):
         self.events = sorted(events, key=lambda e: e.start)
         self.output_file = output_file
         self.custom_holidays = custom_holidays or []
         self.us_holidays = holidays.UnitedStates()
+        self.title = title
 
         # Determine timeline bounds
         if timeline_start:
@@ -82,7 +83,9 @@ class TimelineGenerator:
         self.page_width, self.page_height = landscape(letter)
         self.left_margin = 0.75 * inch
         self.right_margin = 0.75 * inch
-        self.top_margin = 0.75 * inch
+        self.base_top_margin = 0.75 * inch
+        # Add extra space at top if we have a title
+        self.top_margin = self.base_top_margin + (0.4 * inch if title else 0)
         self.bottom_margin = 0.75 * inch
 
         # Timeline visual constants
@@ -93,6 +96,9 @@ class TimelineGenerator:
         self.event_vertical_spacing = 20  # Spacing between stacked events
         self.event_base_offset = 25  # Base offset above timeline for events
         self.row_spacing = 1.5 * inch  # Vertical spacing between wrapped rows
+        self.max_event_height = (
+            1.2 * inch
+        )  # Maximum height events can reach above timeline
 
         # Calculate max days per row
         self.usable_width = self.page_width - self.left_margin - self.right_margin
@@ -292,6 +298,22 @@ class TimelineGenerator:
                 text_x_pos = text_x - text_width / 2
                 text_y_pos = y_baseline + y_offset
 
+                # Make sure we don't go too high and push labels off the page
+                if y_offset > self.max_event_height:
+                    # Place it at max height even if there's overlap
+                    c.drawString(
+                        text_x_pos, y_baseline + self.max_event_height, event.name
+                    )
+                    occupied_boxes.append(
+                        (
+                            text_x_pos,
+                            y_baseline + self.max_event_height,
+                            text_width,
+                            text_height,
+                        )
+                    )
+                    break
+
                 if not self.check_text_overlap(
                     text_x_pos, text_y_pos, text_width, text_height, occupied_boxes
                 ):
@@ -310,12 +332,21 @@ class TimelineGenerator:
         """Generate the PDF timeline."""
         c = canvas.Canvas(self.output_file, pagesize=landscape(letter))
 
+        # Draw title if present
+        if self.title:
+            c.setFont("Helvetica-Bold", 16)
+            c.setFillColor(black)
+            title_width = c.stringWidth(self.title, "Helvetica-Bold", 16)
+            title_x = (self.page_width - title_width) / 2
+            title_y = self.page_height - self.base_top_margin - 5
+            c.drawString(title_x, title_y, self.title)
+
         # Calculate number of rows needed
         num_rows = math.ceil(self.total_days / self.max_days_per_row)
 
         # Start from top of page
         current_date = self.start_date
-        current_y = self.page_height - self.top_margin
+        current_y = self.page_height - self.top_margin - 30
 
         for row in range(num_rows):
             # Calculate how many days in this row
@@ -325,6 +356,14 @@ class TimelineGenerator:
             # Check if we need a new page
             if current_y < self.bottom_margin + self.row_spacing:
                 c.showPage()
+                # Draw title on new page if present
+                if self.title:
+                    c.setFont("Helvetica-Bold", 16)
+                    c.setFillColor(black)
+                    title_width = c.stringWidth(self.title, "Helvetica-Bold", 16)
+                    title_x = (self.page_width - title_width) / 2
+                    title_y = self.page_height - self.base_top_margin - 5
+                    c.drawString(title_x, title_y, self.title)
                 current_y = self.page_height - self.top_margin
 
             # Draw the timeline row
@@ -339,7 +378,6 @@ class TimelineGenerator:
 
         # Save the PDF
         c.save()
-        print(f"Timeline saved to: {self.output_file}")
 
 
 def create_timeline(
@@ -348,6 +386,7 @@ def create_timeline(
     timeline_start: Optional[arrow.Arrow] = None,
     timeline_end: Optional[arrow.Arrow] = None,
     custom_holidays: Optional[List[arrow.Arrow]] = None,
+    title: Optional[str] = None,
 ) -> None:
     """
     Create a timeline PDF from a list of events.
@@ -358,9 +397,10 @@ def create_timeline(
         timeline_start: Optional override for timeline start date
         timeline_end: Optional override for timeline end date
         custom_holidays: Optional list of custom holiday dates
+        title: Optional title to display at the top of the timeline
     """
     generator = TimelineGenerator(
-        events, output_file, timeline_start, timeline_end, custom_holidays
+        events, output_file, timeline_start, timeline_end, custom_holidays, title
     )
     generator.generate()
 
@@ -436,13 +476,16 @@ def main(config_file, output):
     # Parse custom holidays
     custom_holidays = []
     if "custom_holidays" in config:
-        for holiday_str in config["custom_holidays"]:
+        for holiday_str in config["custom_holidays"] or []:
             try:
                 custom_holidays.append(arrow.get(holiday_str))
             except Exception as e:
                 click.echo(
                     f"Warning: Could not parse holiday '{holiday_str}': {e}", err=True
                 )
+
+    # Parse optional title
+    title = config.get("title")
 
     # Generate the timeline
     click.echo(f"Generating timeline with {len(events)} events...")
@@ -452,6 +495,7 @@ def main(config_file, output):
         timeline_start=timeline_start,
         timeline_end=timeline_end,
         custom_holidays=custom_holidays,
+        title=title,
     )
     click.echo(f"✓ Timeline saved to: {output}")
 
