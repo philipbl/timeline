@@ -171,12 +171,12 @@ class TimelineGenerator:
             if self.is_weekend_or_holiday(current_date):
                 x = start_x + (i * self.day_width)
                 # Draw a light gray vertical band for this day
-                c.setFillColorRGB(0.9, 0.9, 0.9)  # Light gray
+                c.setFillColorRGB(0.95, 0.95, 0.95)  # Light gray
                 c.rect(
                     x - self.day_width / 2,
-                    y_baseline - 50,
+                    y_baseline - 40,
                     self.day_width,
-                    100,
+                    55,
                     fill=1,
                     stroke=0,
                 )
