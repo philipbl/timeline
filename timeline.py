@@ -16,7 +16,12 @@ def get_h_margin(events, font, extra_margin=100):
     im = Image.new("RGBA", (50, 50), color="white")
     draw = ImageDraw.Draw(im)
 
-    text_length, text_height = draw.textsize(events[-1][1], font=font)
+    # compute text size using modern Pillow API with fallbacks
+    text = events[-1][1]
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_length = bbox[2] - bbox[0]
+    # text_height = bbox[3] - bbox[1]
+
     return round(text_length / 2 + extra_margin)
 
 
@@ -38,14 +43,25 @@ def draw_ticks(
     for i in range(time_diff + 1):
         x_pos = start_x_pos + i * day_size
         draw.line(
-            [(x_pos, y_pos - tick_length / 2), (x_pos, y_pos + tick_length / 2),],
+            [
+                (x_pos, y_pos - tick_length / 2),
+                (x_pos, y_pos + tick_length / 2),
+            ],
             fill="black",
             width=tick_width,
         )
 
         cur_date = start_date.shift(days=i)
         date_text = cur_date.format("M/D")
-        text_length, text_height = draw.textsize(date_text, font=date_font)
+        try:
+            bbox = draw.textbbox((0, 0), date_text, font=date_font)
+            text_length = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        except Exception:
+            try:
+                text_length, text_height = draw.textsize(date_text, font=date_font)
+            except Exception:
+                text_length, text_height = date_font.getsize(date_text)
 
         draw.text(
             (x_pos - text_length / 2, y_pos + date_space),
@@ -56,7 +72,20 @@ def draw_ticks(
 
 
 def get_text_box(text, draw, font, x_pos, y_pos):
-    text_length, text_height = draw.multiline_textsize(text, font=font)
+    # compute multiline text bbox with fallbacks
+    try:
+        bbox = draw.multiline_textbbox((0, 0), text, font=font)
+        text_length = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+    except Exception:
+        try:
+            text_length, text_height = draw.multiline_textsize(text, font=font)
+        except Exception:
+            # approximate: use largest line width
+            lines = text.splitlines()
+            widths = [font.getsize(l)[0] for l in lines]
+            text_length = max(widths) if widths else 0
+            text_height = sum(font.getsize(l)[1] for l in lines)
 
     x_start = x_pos - text_length / 2
     x_end = x_pos + text_length / 2
@@ -115,20 +144,32 @@ def draw_events(
         # Check to see if there is something already overlapping
         while intersects(box, event_boxes):
             y_pos -= y_offset_spacing
-            box = get_text_box(event_text, draw, event_font, x_pos, y_pos,)
+            box = get_text_box(
+                event_text,
+                draw,
+                event_font,
+                x_pos,
+                y_pos,
+            )
 
         # Keep list of sizes of the text
         event_boxes.append(box)
         # draw.rectangle(event_boxes[-1], outline="black", width=5)
 
         draw.multiline_text(
-            box[0], text=event_text, fill="red", font=event_font, align="center",
+            box[0],
+            text=event_text,
+            fill="red",
+            font=event_font,
+            align="center",
         )
 
 
 def draw_main_line(draw, start_x_pos, end_x_pos, y_pos, width):
     draw.line(
-        [(start_x_pos, y_pos), (end_x_pos, y_pos)], fill="black", width=width,
+        [(start_x_pos, y_pos), (end_x_pos, y_pos)],
+        fill="black",
+        width=width,
     )
 
 
@@ -153,7 +194,11 @@ def draw_sub_timeline(
     exclude,
 ):
     draw_main_line(
-        draw, start_x_pos, end_x_pos, y_pos, width=timeline_width,
+        draw,
+        start_x_pos,
+        end_x_pos,
+        y_pos,
+        width=timeline_width,
     )
 
     draw_ticks(
@@ -202,7 +247,9 @@ def split(start_date, end_date, events, max_days=15):
             new_end_date = end_date
 
         print(
-            start_date, new_end_date, new_end_date - start_date,
+            start_date,
+            new_end_date,
+            new_end_date - start_date,
         )
         yield (
             start_date,

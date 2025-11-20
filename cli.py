@@ -27,20 +27,27 @@ def main(events, start, end, exclude, file_name):
     #  - Short dates like MM/DD or MM/DD/YY (assume current century/year)
 
     def normalize_day(day_str):
-        # MM/DD -> assume current year
-        if re.match(r"^\d{1,2}/\d{1,2}$", day_str):
-            year = datetime.now().year
-            return arrow.get(f"{year}/{day_str}", "YYYY/M/D")
+        # Build Arrow objects anchored at local midnight to avoid UTC->local shifts.
+        local_tz = arrow.now().tzinfo
 
-        # MM/DD/YY -> expand to YYYY (assume 20XX)
+        # MM/DD -> assume current year
+        m = re.match(r"^(\d{1,2})/(\d{1,2})$", day_str)
+        if m:
+            month, day = m.groups()
+            dt = datetime(datetime.now().year, int(month), int(day), tzinfo=local_tz)
+            return arrow.get(dt)
+
         m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2})$", day_str)
         if m:
             month, day, yy = m.groups()
             year = 2000 + int(yy)
-            return arrow.get(f"{year}/{month}/{day}", "YYYY/M/D")
+            dt = datetime(year, int(month), int(day), tzinfo=local_tz)
+            return arrow.get(dt)
 
         # Try arrow's parser for other formats (YYYY-MM-DD, ISO, etc.)
-        return arrow.get(day_str)
+        parsed = arrow.get(day_str)
+        dt = datetime(parsed.year, parsed.month, parsed.day, tzinfo=local_tz)
+        return arrow.get(dt)
 
     # Build (day, name) pairs from tokens
     tokens = list(events)
@@ -64,21 +71,35 @@ def main(events, start, end, exclude, file_name):
             continue
 
         # Single leftover token that isn't parsable
-        raise click.UsageError(f"Could not parse event token: {token}. Use 'DATE NAME' or quote the whole event.")
+        raise click.UsageError(
+            f"Could not parse event token: {token}. Use 'DATE NAME' or quote the whole event."
+        )
 
     events = sorted(parsed, key=lambda x: x[0])
 
+    # Normalize start/end/exclude to local midnight as well
+    local_tz = arrow.now().tzinfo
     if start is None:
-        start = arrow.now()
+        now = arrow.now()
+        start = arrow.get(datetime(now.year, now.month, now.day, tzinfo=local_tz))
     else:
-        start = arrow.get(start)
+        p = arrow.get(start)
+        start = arrow.get(datetime(p.year, p.month, p.day, tzinfo=local_tz))
 
     if end is not None:
-        end = arrow.get(end)
+        p = arrow.get(end)
+        end = arrow.get(datetime(p.year, p.month, p.day, tzinfo=local_tz))
     else:
         end = events[-1][0]
 
-    exclude = [arrow.get(e) for e in exclude]
+    exclude = [
+        arrow.get(
+            datetime(
+                arrow.get(e).year, arrow.get(e).month, arrow.get(e).day, tzinfo=local_tz
+            )
+        )
+        for e in exclude
+    ]
 
     with open(file_name, "wb") as f:
         draw_timeline(start, end, events, f, exclude)
