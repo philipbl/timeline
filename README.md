@@ -7,10 +7,11 @@ A Python tool for creating professional timeline PDFs from YAML configuration fi
 - **PDF Output**: Generates native PDF timelines using ReportLab
 - **Point & Range Events**: 
   - Red dots for single-date events
-  - Red lines for events with start and end dates
+  - Red lines with endcaps for events with start and end dates
 - **Smart Layout**:
   - Automatically wraps long timelines across multiple rows
-  - Intelligently stacks overlapping events to avoid collisions
+  - Intelligently stacks overlapping range events at different vertical positions
+  - Intelligently positions event labels to avoid text collisions
 - **Weekend & Holiday Highlighting**: Weekends and holidays are displayed in gray
 - **Flexible Date Ranges**: 
   - By default, timeline spans from first to last event
@@ -36,7 +37,7 @@ pip install reportlab PyYAML holidays arrow click
 ### Basic Usage
 
 ```bash
-python cli.py config.yaml
+python timeline.py config.yaml
 ```
 
 This creates `timeline.pdf` in the current directory.
@@ -44,9 +45,9 @@ This creates `timeline.pdf` in the current directory.
 ### Custom Output Filename
 
 ```bash
-python cli.py config.yaml --output my_project_timeline.pdf
+python timeline.py config.yaml --output my_project_timeline.pdf
 # or
-python cli.py config.yaml -o schedule.pdf
+python timeline.py config.yaml -o schedule.pdf
 ```
 
 ## Configuration File Format
@@ -103,7 +104,9 @@ events:
      start: "2025-11-20"
      end: "2025-12-15"
    ```
-   Displayed as a red line spanning the dates with the name above.
+   Displayed as a red line with endcaps spanning the dates with the name above.
+
+   **Note**: When multiple range events overlap in time, they are automatically drawn at different vertical offsets so they don't overlap visually.
 
 ### Configuration Options
 
@@ -114,10 +117,10 @@ events:
 
 ## Example
 
-See `example_config.yaml` for a complete example. Run it with:
+See `example_config.yaml` for a complete example that includes overlapping events. Run it with:
 
 ```bash
-python cli.py example_config.yaml
+python timeline.py example_config.yaml
 ```
 
 ## How It Works
@@ -126,11 +129,12 @@ python cli.py example_config.yaml
 2. **Timeline Calculation**: Determines timeline bounds (using first/last events or overrides)
 3. **Row Wrapping**: If timeline is too wide for one row, automatically wraps to multiple rows
 4. **Page Wrapping**: If multiple rows don't fit on one page, creates additional pages
-5. **Event Placement**: 
+4. **Event Placement**: 
    - Draws red dots for point events
-   - Draws red lines for range events
+   - Draws red lines with endcaps for range events
+   - When range events overlap, draws them at different vertical positions
    - Positions event labels above the timeline
-   - Stacks overlapping events vertically to avoid collisions
+   - Stacks overlapping event labels vertically to avoid text collisions
 6. **Visual Enhancements**:
    - Grays out weekends (Saturday/Sunday)
    - Grays out US federal holidays
