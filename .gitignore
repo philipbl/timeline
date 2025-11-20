@@ -1,2 +1,4 @@
 .vscode
+__pycache__/
 timeline.png
+timeline.pdf

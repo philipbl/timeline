@@ -1,0 +1,67 @@
+# Timeline Configuration File
+#
+# This file defines events and timeline settings for generating a PDF timeline.
+
+# Optional: Add a title that appears at the top of the timeline
+title: "Project Timeline - Q4 2025"
+
+# Optional: Override the default timeline start/end dates
+# By default, the timeline starts with the first event and ends with the last event
+# timeline_start: "2025-11-01"
+# timeline_end: "2025-12-31"
+
+# Optional: Specify custom holidays in addition to US federal holidays
+# Supports both single dates (YYYY-MM-DD) and date ranges (start/end)
+custom_holidays:
+  - "2025-11-29" # Single day company holiday
+  - "2025-12-24" # Christmas Eve
+  - start: "2025-12-25" # Multi-day holiday range
+    end: "2025-12-26"
+
+# Events can have:
+# - name: Required event name/label
+# - start: Required start date (YYYY-MM-DD)
+# - end: Optional end date (YYYY-MM-DD) - if omitted, shows as a dot; if present, shows as a line
+events:
+  - name: "Project Kickoff"
+    start: "2025-11-20"
+
+  - name: "Design Phase"
+    start: "2025-11-21"
+    end: "2025-11-27"
+
+  - name: "Requirements Gathering"
+    start: "2025-11-22"
+    end: "2025-11-26"
+
+  - name: "Thanksgiving"
+    start: "2025-11-28"
+
+  - name: "Development Sprint 1"
+    start: "2025-12-01"
+    end: "2025-12-14"
+
+  - name: "Code Review"
+    start: "2025-12-10"
+
+  - name: "Testing Phase"
+    start: "2025-12-12"
+    end: "2025-12-20"
+
+  - name: "Security Audit"
+    start: "2025-12-13"
+    end: "2025-12-18"
+
+  - name: "Performance Testing"
+    start: "2025-12-15"
+    end: "2025-12-19"
+
+  - name: "Holiday Break"
+    start: "2025-12-23"
+    end: "2025-12-26"
+
+  - name: "Final Review"
+    start: "2025-12-27"
+
+  - name: "Launch"
+    start: "2025-12-30"
