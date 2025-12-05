@@ -30,17 +30,23 @@ class Event:
     """Represents a timeline event with a name, start date, and optional end date."""
 
     def __init__(
-        self, name: str, start: arrow.Arrow, end: Optional[arrow.Arrow] = None
+        self,
+        name: str,
+        start: arrow.Arrow,
+        end: Optional[arrow.Arrow] = None,
+        done: bool = False,
     ):
         self.name = name
         self.start = start
         self.end = end
         self.is_range = end is not None
+        self.done = done
 
     def __repr__(self):
+        status = " (done)" if self.done else ""
         if self.is_range:
-            return f"Event({self.name}, {self.start.format('YYYY-MM-DD')} to {self.end.format('YYYY-MM-DD')})"
-        return f"Event({self.name}, {self.start.format('YYYY-MM-DD')})"
+            return f"Event({self.name}, {self.start.format('YYYY-MM-DD')} to {self.end.format('YYYY-MM-DD')}{status})"
+        return f"Event({self.name}, {self.start.format('YYYY-MM-DD')}{status})"
 
 
 class TimelineGenerator:
@@ -214,6 +220,28 @@ class TimelineGenerator:
                 x - text_width / 2, y_baseline - self.tick_height - 12, date_text
             )
 
+    def draw_past_day_markers(
+        self,
+        c: canvas.Canvas,
+        row_start_date: arrow.Arrow,
+        num_days: int,
+        y_baseline: float,
+    ) -> None:
+        """Draw X marks on past days (before today)."""
+        start_x = self.left_margin
+        today = arrow.now().floor("day")
+
+        for i in range(num_days + 1):
+            current_date = row_start_date.shift(days=i)
+            if current_date < today:
+                x = start_x + (i * self.day_width)
+                x_size = 4
+                c.setStrokeColor(black)
+                c.setLineWidth(1.5)
+                # Draw X on the timeline itself
+                c.line(x - x_size, y_baseline - x_size, x + x_size, y_baseline + x_size)
+                c.line(x - x_size, y_baseline + x_size, x + x_size, y_baseline - x_size)
+
     def draw_events_for_row(
         self,
         c: canvas.Canvas,
@@ -322,6 +350,17 @@ class TimelineGenerator:
                     c.drawString(
                         text_x_pos, y_baseline + self.max_event_height, event.name
                     )
+                    # Draw strikethrough if done
+                    if event.done:
+                        c.setStrokeColor(black)
+                        c.setLineWidth(1.5)
+                        c.line(
+                            text_x_pos,
+                            y_baseline + self.max_event_height + text_height / 2 - 3,
+                            text_x_pos + text_width,
+                            y_baseline + self.max_event_height + text_height / 2 - 3,
+                        )
+                        c.setStrokeColor(red)
                     occupied_boxes.append(
                         (
                             text_x_pos,
@@ -337,6 +376,17 @@ class TimelineGenerator:
                 ):
                     # No collision, draw the text
                     c.drawString(text_x_pos, text_y_pos, event.name)
+                    # Draw strikethrough if done
+                    if event.done:
+                        c.setStrokeColor(black)
+                        c.setLineWidth(1.5)
+                        c.line(
+                            text_x_pos,
+                            text_y_pos + text_height / 2 - 3,
+                            text_x_pos + text_width,
+                            text_y_pos + text_height / 2 - 3,
+                        )
+                        c.setStrokeColor(red)
                     occupied_boxes.append(
                         (text_x_pos, text_y_pos, text_width, text_height)
                     )
@@ -389,6 +439,9 @@ class TimelineGenerator:
 
             # Draw events for this row
             self.draw_events_for_row(c, current_date, days_in_row, current_y)
+
+            # Draw X's on past days (drawn last so they appear on top)
+            self.draw_past_day_markers(c, current_date, days_in_row, current_y)
 
             # Move to next row
             current_date = current_date.shift(days=days_in_row)
@@ -458,6 +511,7 @@ def main(config_file, output):
         name = event_data.get("name")
         start_str = event_data.get("start")
         end_str = event_data.get("end")
+        done = event_data.get("done", False)
 
         if not name or not start_str:
             click.echo(f"Warning: Skipping invalid event: {event_data}", err=True)
@@ -466,7 +520,7 @@ def main(config_file, output):
         try:
             start = arrow.get(start_str)
             end = arrow.get(end_str) if end_str else None
-            events.append(Event(name, start, end))
+            events.append(Event(name, start, end, done))
         except Exception as e:
             click.echo(f"Warning: Could not parse event '{name}': {e}", err=True)
             continue

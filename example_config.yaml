@@ -22,13 +22,16 @@ custom_holidays:
 # - name: Required event name/label
 # - start: Required start date (YYYY-MM-DD)
 # - end: Optional end date (YYYY-MM-DD) - if omitted, shows as a dot; if present, shows as a line
+# - done: Optional boolean (true/false) - if true, event name will be crossed out and X's won't be drawn
 events:
   - name: "Project Kickoff"
     start: "2025-11-20"
+    done: true
 
   - name: "Design Phase"
     start: "2025-11-21"
     end: "2025-11-27"
+    done: true
 
   - name: "Requirements Gathering"
     start: "2025-11-22"
