@@ -451,31 +451,6 @@ class TimelineGenerator:
         c.save()
 
 
-def create_timeline(
-    events: List[Event],
-    output_file: str = "timeline.pdf",
-    timeline_start: Optional[arrow.Arrow] = None,
-    timeline_end: Optional[arrow.Arrow] = None,
-    custom_holidays: Optional[List[Tuple[arrow.Arrow, arrow.Arrow]]] = None,
-    title: Optional[str] = None,
-) -> None:
-    """
-    Create a timeline PDF from a list of events.
-
-    Args:
-        events: List of Event objects
-        output_file: Output PDF filename
-        timeline_start: Optional override for timeline start date
-        timeline_end: Optional override for timeline end date
-        custom_holidays: Optional list of custom holiday date ranges (start, end) tuples
-        title: Optional title to display at the top of the timeline
-    """
-    generator = TimelineGenerator(
-        events, output_file, timeline_start, timeline_end, custom_holidays, title
-    )
-    generator.generate()
-
-
 # CLI Interface
 @click.command()
 @click.argument("config_file", type=click.Path(exists=True))
@@ -585,14 +560,16 @@ def main(config_file, output):
 
     # Generate the timeline
     click.echo(f"Generating timeline with {len(events)} events...")
-    create_timeline(
-        events=events,
-        output_file=output,
-        timeline_start=timeline_start,
-        timeline_end=timeline_end,
-        custom_holidays=custom_holidays,
-        title=title,
-    )
+
+    TimelineGenerator(
+        events,
+        output,
+        timeline_start,
+        timeline_end,
+        custom_holidays,
+        title,
+    ).generate()
+
     click.echo(f"✓ Timeline saved to: {output}")
 
 
