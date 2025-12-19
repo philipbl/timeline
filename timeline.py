@@ -73,7 +73,7 @@ class TimelineGenerator:
         if timeline_start:
             self.start_date = timeline_start
         else:
-            self.start_date = self.events[0].start if self.events else arrow.now()
+            self.start_date = arrow.now().to("UTC").floor("day")
 
         if timeline_end:
             self.end_date = timeline_end
