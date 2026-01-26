@@ -172,7 +172,7 @@ class TimelineGenerator:
         end_x = start_x + (num_days * self.day_width)
 
         # Draw gray background for weekend/holiday periods
-        for i in range(num_days + 1):
+        for i in range(num_days):
             current_date = row_start_date.shift(days=i)
             if self.is_weekend_or_holiday(current_date):
                 x = start_x + (i * self.day_width)
@@ -195,7 +195,7 @@ class TimelineGenerator:
         c.setFont("Helvetica", 8)
         c.setLineWidth(1)
 
-        for i in range(num_days + 1):
+        for i in range(num_days):
             current_date = row_start_date.shift(days=i)
             x = start_x + (i * self.day_width)
 
@@ -231,7 +231,7 @@ class TimelineGenerator:
         start_x = self.left_margin
         today = arrow.now().floor("day")
 
-        for i in range(num_days + 1):
+        for i in range(num_days):
             current_date = row_start_date.shift(days=i)
             if current_date < today:
                 x = start_x + (i * self.day_width)
