@@ -277,6 +277,10 @@ class TimelineGenerator:
             start_pos_x = start_x + (days_from_row_start * self.day_width)
             end_pos_x = start_x + (days_from_row_end * self.day_width)
 
+            # If event continues beyond this row, extend line to indicate continuation
+            if event_end > row_end_date:
+                end_pos_x = start_x + (num_days * self.day_width)
+
             c.setFillColor(red)
             c.setStrokeColor(red)
 
@@ -302,26 +306,32 @@ class TimelineGenerator:
                 # Record this range's position
                 occupied_ranges.append((start_pos_x, end_pos_x, y_offset_for_line))
 
-                # Draw a red line for range events with endcaps
+                # Draw a red line for range events
                 c.setLineWidth(3)
                 line_y = y_baseline + y_offset_for_line
                 c.line(start_pos_x, line_y, end_pos_x, line_y)
 
-                # Draw endcaps (small vertical lines at start and end)
+                # Draw endcaps only if the event actually starts/ends in this row
                 endcap_height = 8
                 c.setLineWidth(3)
-                c.line(
-                    start_pos_x,
-                    line_y - endcap_height / 2,
-                    start_pos_x,
-                    line_y + endcap_height / 2,
-                )
-                c.line(
-                    end_pos_x,
-                    line_y - endcap_height / 2,
-                    end_pos_x,
-                    line_y + endcap_height / 2,
-                )
+
+                # Draw start endcap only if event starts in this row
+                if event.start >= row_start_date:
+                    c.line(
+                        start_pos_x,
+                        line_y - endcap_height / 2,
+                        start_pos_x,
+                        line_y + endcap_height / 2,
+                    )
+
+                # Draw end endcap only if event ends in this row
+                if event.end <= row_end_date:
+                    c.line(
+                        end_pos_x,
+                        line_y - endcap_height / 2,
+                        end_pos_x,
+                        line_y + endcap_height / 2,
+                    )
 
                 # Use middle of the range for text positioning
                 text_x = (start_pos_x + end_pos_x) / 2
@@ -330,71 +340,81 @@ class TimelineGenerator:
                 c.circle(start_pos_x, y_baseline, self.dot_radius, fill=1, stroke=0)
                 text_x = start_pos_x
 
-            # Draw event label with collision avoidance
-            c.setFont("Helvetica", 10)
-            text_width = self.get_text_width(c, event.name, 10)
-            text_height = 12
+            # Only draw label if event starts in this row (to avoid duplicate labels on wrapped events)
+            should_draw_label = event.start >= row_start_date
 
-            # Try to place text at increasing heights until no collision
-            y_offset = self.event_base_offset + y_offset_for_line
-            max_attempts = 20
-            attempt = 0
+            if should_draw_label:
+                # Draw event label with collision avoidance
+                c.setFont("Helvetica", 10)
+                text_width = self.get_text_width(c, event.name, 10)
+                text_height = 12
 
-            while attempt < max_attempts:
-                text_x_pos = text_x - text_width / 2
-                text_y_pos = y_baseline + y_offset
+                # Try to place text at increasing heights until no collision
+                y_offset = self.event_base_offset + y_offset_for_line
+                max_attempts = 20
+                attempt = 0
 
-                # Make sure we don't go too high and push labels off the page
-                if y_offset > self.max_event_height:
-                    # Place it at max height even if there's overlap
-                    c.drawString(
-                        text_x_pos, y_baseline + self.max_event_height, event.name
-                    )
-                    # Draw strikethrough if done
-                    if event.done:
-                        c.setStrokeColor(black)
-                        c.setLineWidth(1.5)
-                        c.line(
-                            text_x_pos,
-                            y_baseline + self.max_event_height + text_height / 2 - 3,
-                            text_x_pos + text_width,
-                            y_baseline + self.max_event_height + text_height / 2 - 3,
+                while attempt < max_attempts:
+                    text_x_pos = text_x - text_width / 2
+                    text_y_pos = y_baseline + y_offset
+
+                    # Make sure we don't go too high and push labels off the page
+                    if y_offset > self.max_event_height:
+                        # Place it at max height even if there's overlap
+                        c.drawString(
+                            text_x_pos, y_baseline + self.max_event_height, event.name
                         )
-                        c.setStrokeColor(red)
-                    occupied_boxes.append(
-                        (
-                            text_x_pos,
-                            y_baseline + self.max_event_height,
-                            text_width,
-                            text_height,
+                        # Draw strikethrough if done
+                        if event.done:
+                            c.setStrokeColor(black)
+                            c.setLineWidth(1.5)
+                            c.line(
+                                text_x_pos,
+                                y_baseline
+                                + self.max_event_height
+                                + text_height / 2
+                                - 3,
+                                text_x_pos + text_width,
+                                y_baseline
+                                + self.max_event_height
+                                + text_height / 2
+                                - 3,
+                            )
+                            c.setStrokeColor(red)
+                        occupied_boxes.append(
+                            (
+                                text_x_pos,
+                                y_baseline + self.max_event_height,
+                                text_width,
+                                text_height,
+                            )
                         )
-                    )
-                    break
+                        break
 
-                if not self.check_text_overlap(
-                    text_x_pos, text_y_pos, text_width, text_height, occupied_boxes
-                ):
-                    # No collision, draw the text
-                    c.drawString(text_x_pos, text_y_pos, event.name)
-                    # Draw strikethrough if done
-                    if event.done:
-                        c.setStrokeColor(black)
-                        c.setLineWidth(1.5)
-                        c.line(
-                            text_x_pos,
-                            text_y_pos + text_height / 2 - 3,
-                            text_x_pos + text_width,
-                            text_y_pos + text_height / 2 - 3,
+                    if not self.check_text_overlap(
+                        text_x_pos, text_y_pos, text_width, text_height, occupied_boxes
+                    ):
+                        # No collision, draw the text
+                        c.drawString(text_x_pos, text_y_pos, event.name)
+                        # Draw strikethrough if done
+                        if event.done:
+                            c.setStrokeColor(black)
+                            c.setLineWidth(1.5)
+                            c.line(
+                                text_x_pos,
+                                text_y_pos + text_height / 2 - 3,
+                                text_x_pos + text_width,
+                                text_y_pos + text_height / 2 - 3,
+                            )
+                            c.setStrokeColor(red)
+                        occupied_boxes.append(
+                            (text_x_pos, text_y_pos, text_width, text_height)
                         )
-                        c.setStrokeColor(red)
-                    occupied_boxes.append(
-                        (text_x_pos, text_y_pos, text_width, text_height)
-                    )
-                    break
+                        break
 
-                # Collision detected, try higher position
-                y_offset += self.event_vertical_spacing
-                attempt += 1
+                    # Collision detected, try higher position
+                    y_offset += self.event_vertical_spacing
+                    attempt += 1
 
     def generate(self) -> None:
         """Generate the PDF timeline."""
