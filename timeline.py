@@ -23,6 +23,7 @@ import yaml
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.colors import HexColor, gray, red, black
 
 
@@ -107,6 +108,8 @@ class TimelineGenerator:
         self.max_event_height = (
             1.2 * inch
         )  # Maximum height events can reach above timeline
+        self.base_first_row_baseline_offset = 40 if title else 30
+        self.title_label_vertical_padding = 8
 
         # Calculate max days per row
         self.usable_width = self.page_width - self.left_margin - self.right_margin
@@ -416,6 +419,117 @@ class TimelineGenerator:
                     y_offset += self.event_vertical_spacing
                     attempt += 1
 
+    def estimate_row_label_top(
+        self, row_start_date: arrow.Arrow, num_days: int
+    ) -> float:
+        """Estimate highest Y position (relative to baseline) used by labels in a row."""
+        row_end_date = row_start_date.shift(days=num_days - 1)
+        start_x = self.left_margin
+
+        occupied_boxes = []
+        occupied_ranges = []
+        text_height = 12
+        max_label_top = 0.0
+
+        for event in self.events:
+            event_end = event.end if event.end else event.start
+
+            if event.start > row_end_date or event_end < row_start_date:
+                continue
+
+            event_row_start = max(event.start, row_start_date)
+            event_row_end = min(event_end, row_end_date)
+
+            days_from_row_start = (event_row_start - row_start_date).days
+            days_from_row_end = (event_row_end - row_start_date).days
+
+            start_pos_x = start_x + (days_from_row_start * self.day_width)
+            end_pos_x = start_x + (days_from_row_end * self.day_width)
+
+            if event_end > row_end_date:
+                end_pos_x = start_x + (num_days * self.day_width)
+
+            y_offset_for_line = 0
+            if event.is_range:
+                for (
+                    occupied_start_x,
+                    occupied_end_x,
+                    occupied_y_offset,
+                ) in occupied_ranges:
+                    if not (
+                        end_pos_x + 5 < occupied_start_x
+                        or start_pos_x > occupied_end_x + 5
+                    ):
+                        y_offset_for_line = max(
+                            y_offset_for_line, occupied_y_offset + 8
+                        )
+
+                occupied_ranges.append((start_pos_x, end_pos_x, y_offset_for_line))
+                text_x = (start_pos_x + end_pos_x) / 2
+            else:
+                text_x = start_pos_x
+
+            should_draw_label = event.start >= row_start_date
+
+            if not should_draw_label:
+                continue
+
+            text_width = stringWidth(event.name, "Helvetica", 10)
+            y_offset = self.event_base_offset + y_offset_for_line
+            max_attempts = 20
+            attempt = 0
+
+            while attempt < max_attempts:
+                if y_offset > self.max_event_height:
+                    placed_y = self.max_event_height
+                    max_label_top = max(max_label_top, placed_y + text_height)
+                    occupied_boxes.append(
+                        (
+                            text_x - text_width / 2,
+                            placed_y,
+                            text_width,
+                            text_height,
+                        )
+                    )
+                    break
+
+                text_x_pos = text_x - text_width / 2
+                text_y_pos = y_offset
+
+                if not self.check_text_overlap(
+                    text_x_pos,
+                    text_y_pos,
+                    text_width,
+                    text_height,
+                    occupied_boxes,
+                ):
+                    max_label_top = max(max_label_top, text_y_pos + text_height)
+                    occupied_boxes.append(
+                        (text_x_pos, text_y_pos, text_width, text_height)
+                    )
+                    break
+
+                y_offset += self.event_vertical_spacing
+                attempt += 1
+
+        return max_label_top
+
+    def get_first_row_baseline_offset(
+        self, row_start_date: arrow.Arrow, num_days: int
+    ) -> float:
+        """Compute first-row baseline offset, increasing it for stacked labels under a title."""
+        if not self.title:
+            return self.base_first_row_baseline_offset
+
+        max_label_top = self.estimate_row_label_top(row_start_date, num_days)
+        required_gap = max_label_top + self.title_label_vertical_padding
+
+        # title_y - baseline_y = offset + (top_margin - base_top_margin - 5)
+        static_gap = self.top_margin - self.base_top_margin - 5
+        required_offset = required_gap - static_gap
+
+        return max(self.base_first_row_baseline_offset, required_offset)
+
     def generate(self) -> None:
         """Generate the PDF timeline."""
         c = canvas.Canvas(self.output_file, pagesize=landscape(letter))
@@ -434,12 +548,18 @@ class TimelineGenerator:
 
         # Start from top of page
         current_date = self.start_date
-        current_y = self.page_height - self.top_margin - 30
+        current_y = None
 
         for row in range(num_rows):
             # Calculate how many days in this row
             remaining_days = self.total_days - (row * self.max_days_per_row)
             days_in_row = min(self.max_days_per_row, remaining_days)
+
+            if current_y is None:
+                first_row_offset = self.get_first_row_baseline_offset(
+                    current_date, days_in_row
+                )
+                current_y = self.page_height - self.top_margin - first_row_offset
 
             # Check if we need a new page
             if current_y < self.bottom_margin + self.row_spacing:
@@ -452,7 +572,10 @@ class TimelineGenerator:
                     title_x = (self.page_width - title_width) / 2
                     title_y = self.page_height - self.base_top_margin - 5
                     c.drawString(title_x, title_y, self.title)
-                current_y = self.page_height - self.top_margin
+                first_row_offset = self.get_first_row_baseline_offset(
+                    current_date, days_in_row
+                )
+                current_y = self.page_height - self.top_margin - first_row_offset
 
             # Draw the timeline row
             self.draw_timeline_row(c, current_date, days_in_row, current_y)
