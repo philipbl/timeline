@@ -427,29 +427,56 @@ class TimelineGenerator:
             date_text = current_date.format("M/D")
             c.drawCentredString(x, y_baseline - self.tick_height / 2 - 12, date_text)
 
-        # Holiday names under the dates, one label per consecutive run;
-        # labels that would overlap an earlier one are skipped
+        # Holiday names under the dates. A name is centered in its gray
+        # band when it is the band's only holiday; bands holding several
+        # holidays center each name over its own days. Labels that would
+        # overlap an earlier one are skipped.
         c.setFont("Helvetica-Oblique", 6.5)
         c.setFillColor(COLOR_SUBTITLE)
         last_label_end = float("-inf")
         i = 0
         while i < num_days:
-            name = self.holiday_name(row_start_date.shift(days=i))
-            if name:
-                j = i
-                while (
-                    j + 1 < num_days
-                    and self.holiday_name(row_start_date.shift(days=j + 1)) == name
-                ):
-                    j += 1
-                center_x = start_x + ((i + j) / 2) * self.day_width
+            if not self.is_weekend_or_holiday(row_start_date.shift(days=i)):
+                i += 1
+                continue
+
+            # Band run [i, j] of consecutive weekend/holiday days
+            j = i
+            while j + 1 < num_days and self.is_weekend_or_holiday(
+                row_start_date.shift(days=j + 1)
+            ):
+                j += 1
+
+            # Group the named days within the band
+            groups = []
+            k = i
+            while k <= j:
+                name = self.holiday_name(row_start_date.shift(days=k))
+                if name:
+                    g = k
+                    while (
+                        g + 1 <= j
+                        and self.holiday_name(row_start_date.shift(days=g + 1))
+                        == name
+                    ):
+                        g += 1
+                    groups.append((name, k, g))
+                    k = g + 1
+                else:
+                    k += 1
+
+            for name, group_start, group_end in groups:
+                if len(groups) == 1:
+                    center_day = (i + j) / 2
+                else:
+                    center_day = (group_start + group_end) / 2
+                center_x = start_x + center_day * self.day_width
                 name_width = stringWidth(name, "Helvetica-Oblique", 6.5)
                 if center_x - name_width / 2 > last_label_end + 4:
                     c.drawCentredString(center_x, y_baseline - 36, name)
                     last_label_end = center_x + name_width / 2
-                i = j + 1
-            else:
-                i += 1
+
+            i = j + 1
 
     def draw_past_day_markers(
         self,
