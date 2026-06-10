@@ -3,16 +3,18 @@ Timeline PDF Generator using ReportLab
 
 This module generates PDF timelines with events, handling:
 - Weekend and holiday graying
-- Point events (red dots) and range events (red lines)
+- Point events (colored dots) and range events (colored bars)
+- Same-day point events split the dot into wedges (half-circles for two)
 - Automatic wrapping for long timelines
 - Vertical stacking for overlapping events
+- Leader lines connecting labels to their markers
+- X marks on past days
 
 Usage:
     python timeline.py config.yaml
     python timeline.py config.yaml --output my_timeline.pdf
 """
 
-import math
 import sys
 from typing import List, Tuple, Optional
 
@@ -24,7 +26,30 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.lib.colors import HexColor, gray, red, black
+from reportlab.lib.colors import HexColor
+
+
+# Print-friendly colors, dark enough to double as label text
+EVENT_COLORS = [
+    "#C0392B",  # red
+    "#1F618D",  # blue
+    "#1E8449",  # green
+    "#B9770E",  # amber
+    "#7D3C98",  # purple
+    "#148F77",  # teal
+]
+
+COLOR_BAR = HexColor("#33333B")
+COLOR_TICK = HexColor("#4C4C55")
+COLOR_TICK_MUTED = HexColor("#B3B6BC")
+COLOR_DATE = HexColor("#55555E")
+COLOR_DATE_MUTED = HexColor("#A8ABB2")
+COLOR_WEEKEND_BAND = HexColor("#F1F2F5")
+COLOR_PAST_X = HexColor("#6E6E76")
+COLOR_DONE = HexColor("#9A9AA2")
+COLOR_TITLE = HexColor("#26262E")
+COLOR_SUBTITLE = HexColor("#8A8A93")
+COLOR_FOOTER = HexColor("#B8B8C0")
 
 
 class Event:
@@ -42,6 +67,7 @@ class Event:
         self.end = end
         self.is_range = end is not None
         self.done = done
+        self.color = HexColor(EVENT_COLORS[0])
 
     def __repr__(self):
         status = " (done)" if self.done else ""
@@ -63,6 +89,8 @@ class TimelineGenerator:
         title: Optional[str] = None,
     ):
         self.events = sorted(events, key=lambda e: e.start)
+        for i, event in enumerate(self.events):
+            event.color = HexColor(EVENT_COLORS[i % len(EVENT_COLORS)])
         self.output_file = output_file
         # custom_holidays is a list of tuples: (start_date, end_date)
         # For single-day holidays, start_date == end_date
@@ -93,23 +121,24 @@ class TimelineGenerator:
         self.left_margin = 0.75 * inch
         self.right_margin = 0.75 * inch
         self.base_top_margin = 0.75 * inch
-        # Add extra space at top if we have a title
-        self.top_margin = self.base_top_margin + (0.4 * inch if title else 0)
+        # Add extra space at top if we have a title (title + subtitle)
+        self.top_margin = self.base_top_margin + (0.55 * inch if title else 0)
         self.bottom_margin = 0.75 * inch
 
         # Timeline visual constants
         self.day_width = 30  # Width allocated per day
-        self.timeline_height = 3  # Height of main timeline bar
-        self.tick_height = 15  # Height of date ticks
-        self.dot_radius = 4  # Radius for point events
-        self.event_vertical_spacing = 20  # Spacing between stacked events
-        self.event_base_offset = 25  # Base offset above timeline for events
-        self.row_spacing = 1.5 * inch  # Vertical spacing between wrapped rows
+        self.tick_height = 12  # Height of date ticks
+        self.dot_radius = 4.5  # Radius for point events
+        self.range_base_offset = 10  # Range bars float this far above the baseline
+        self.range_stack_spacing = 9  # Extra offset per stacked range bar
+        self.event_vertical_spacing = 16  # Spacing between stacked labels
+        self.event_base_offset = 25  # Base offset above timeline for labels
         self.max_event_height = (
             1.2 * inch
-        )  # Maximum height events can reach above timeline
-        self.base_first_row_baseline_offset = 40 if title else 30
-        self.title_label_vertical_padding = 8
+        )  # Maximum height labels can reach above timeline
+        self.row_depth_below = 52  # Space a row needs below its baseline
+        self.label_font = ("Helvetica-Bold", 9)
+        self.label_text_height = 12
 
         # Calculate max days per row
         self.usable_width = self.page_width - self.left_margin - self.right_margin
@@ -135,11 +164,6 @@ class TimelineGenerator:
 
         return False
 
-    def get_text_width(self, c: canvas.Canvas, text: str, font_size: int = 10) -> float:
-        """Calculate the width of text in points."""
-        c.setFont("Helvetica", font_size)
-        return c.stringWidth(text, "Helvetica", font_size)
-
     def check_text_overlap(
         self,
         x: float,
@@ -161,6 +185,147 @@ class TimelineGenerator:
                 return True
         return False
 
+    def layout_events_for_row(
+        self, row_start_date: arrow.Arrow, num_days: int
+    ) -> Tuple[List[dict], float]:
+        """Compute marker and label positions (relative to the baseline) for a row.
+
+        Returns (placements, max_label_top) where max_label_top is the highest
+        point above the baseline used by any label.
+        """
+        row_end_date = row_start_date.shift(days=num_days - 1)
+        start_x = self.left_margin
+        bar_end_x = start_x + (num_days - 1) * self.day_width
+
+        occupied_boxes = []
+        occupied_ranges = []
+        placements = []
+        max_label_top = 0.0
+
+        # Count point events sharing the same day so their dots can be
+        # split into wedges (half-circles for two)
+        point_counts = {}
+        for event in self.events:
+            if not event.is_range and row_start_date <= event.start <= row_end_date:
+                key = event.start.format("YYYY-MM-DD")
+                point_counts[key] = point_counts.get(key, 0) + 1
+        point_seen = {}
+
+        for event in self.events:
+            event_end = event.end if event.end else event.start
+
+            if event.start > row_end_date or event_end < row_start_date:
+                continue  # Event doesn't appear in this row
+
+            event_row_start = max(event.start, row_start_date)
+            event_row_end = min(event_end, row_end_date)
+
+            days_from_row_start = (event_row_start - row_start_date).days
+            days_from_row_end = (event_row_end - row_start_date).days
+
+            start_pos_x = start_x + (days_from_row_start * self.day_width)
+            end_pos_x = start_x + (days_from_row_end * self.day_width)
+
+            continues_left = event.start < row_start_date
+            continues_right = event_end > row_end_date
+
+            # Center the label over the visible portion of the event
+            marker_x = (start_pos_x + end_pos_x) / 2 if event.is_range else start_pos_x
+
+            # Extend continuing events slightly past the row edges (arrowheads added there)
+            if continues_left:
+                start_pos_x = start_x - 10
+            if continues_right:
+                end_pos_x = bar_end_x + 10
+
+            # Stack overlapping range bars
+            line_y_offset = 0
+            if event.is_range:
+                line_y_offset = self.range_base_offset
+                for occ_start_x, occ_end_x, occ_y_offset in occupied_ranges:
+                    if not (
+                        end_pos_x + 5 < occ_start_x or start_pos_x > occ_end_x + 5
+                    ):
+                        line_y_offset = max(
+                            line_y_offset, occ_y_offset + self.range_stack_spacing
+                        )
+                occupied_ranges.append((start_pos_x, end_pos_x, line_y_offset))
+                # Register the bar as an obstacle so labels avoid it
+                occupied_boxes.append(
+                    (start_pos_x, line_y_offset - 4, end_pos_x - start_pos_x, 8)
+                )
+
+            wedge_index = 0
+            wedge_count = 1
+            if not event.is_range:
+                key = event.start.format("YYYY-MM-DD")
+                wedge_count = point_counts[key]
+                wedge_index = point_seen.get(key, 0)
+                point_seen[key] = wedge_index + 1
+
+            placements.append(
+                {
+                    "event": event,
+                    "is_range": event.is_range,
+                    "start_x": start_pos_x,
+                    "end_x": end_pos_x,
+                    "marker_x": marker_x,
+                    "line_y_offset": line_y_offset,
+                    "continues_left": continues_left,
+                    "continues_right": continues_right,
+                    "wedge_index": wedge_index,
+                    "wedge_count": wedge_count,
+                    "label_x": None,
+                    "label_y": None,
+                    "text_width": 0,
+                }
+            )
+
+        # Second pass: place labels once all bars are known, so labels
+        # avoid both other labels and every range bar in the row.
+        for placement in placements:
+            event = placement["event"]
+
+            # Only place a label if the event starts in this row
+            # (avoids duplicate labels on wrapped events)
+            if event.start < row_start_date:
+                continue
+
+            marker_x = placement["marker_x"]
+            stack_extra = 0
+            if placement["is_range"]:
+                stack_extra = placement["line_y_offset"] - self.range_base_offset
+
+            text_width = stringWidth(event.name, *self.label_font)
+            text_height = self.label_text_height
+            y_offset = self.event_base_offset + stack_extra
+            max_attempts = 20
+
+            for _ in range(max_attempts):
+                if y_offset > self.max_event_height:
+                    # Place at max height even if there's overlap
+                    y_offset = self.max_event_height
+                    break
+                if not self.check_text_overlap(
+                    marker_x - text_width / 2,
+                    y_offset,
+                    text_width,
+                    text_height,
+                    occupied_boxes,
+                ):
+                    break
+                y_offset += self.event_vertical_spacing
+
+            placement["label_x"] = marker_x - text_width / 2
+            placement["label_y"] = y_offset
+            placement["text_width"] = text_width
+            occupied_boxes.append(
+                (marker_x - text_width / 2, y_offset, text_width, text_height)
+            )
+            max_label_top = max(max_label_top, y_offset + text_height)
+
+        return placements, max_label_top
+
     def draw_timeline_row(
         self,
         c: canvas.Canvas,
@@ -170,44 +335,49 @@ class TimelineGenerator:
     ) -> None:
         """Draw a single row of the timeline with dates and ticks."""
 
-        # Draw main timeline bar
         start_x = self.left_margin
-        end_x = start_x + (num_days * self.day_width)
+        bar_end_x = start_x + (num_days - 1) * self.day_width
 
-        # Draw gray background for weekend/holiday periods
-        for i in range(num_days):
-            current_date = row_start_date.shift(days=i)
-            if self.is_weekend_or_holiday(current_date):
-                x = start_x + (i * self.day_width)
-                # Draw a light gray vertical band for this day
-                c.setFillColorRGB(0.95, 0.95, 0.95)  # Light gray
-                c.rect(
-                    x - self.day_width / 2,
-                    y_baseline - 40,
-                    self.day_width,
-                    55,
-                    fill=1,
-                    stroke=0,
+        band_bottom = y_baseline - 40
+        band_height = 54
+
+        # Draw merged gray bands for consecutive weekend/holiday days
+        i = 0
+        while i < num_days:
+            if self.is_weekend_or_holiday(row_start_date.shift(days=i)):
+                j = i
+                while j + 1 < num_days and self.is_weekend_or_holiday(
+                    row_start_date.shift(days=j + 1)
+                ):
+                    j += 1
+                band_x = start_x + (i * self.day_width) - self.day_width / 2
+                band_width = (j - i + 1) * self.day_width
+                c.setFillColor(COLOR_WEEKEND_BAND)
+                c.roundRect(
+                    band_x, band_bottom, band_width, band_height, 4, fill=1, stroke=0
                 )
+                i = j + 1
+            else:
+                i += 1
 
-        c.setStrokeColor(black)
-        c.setLineWidth(self.timeline_height)
-        c.line(start_x, y_baseline, end_x, y_baseline)
+        # Draw main timeline bar
+        c.setStrokeColor(COLOR_BAR)
+        c.setLineWidth(2.5)
+        c.setLineCap(1)  # Round caps
+        c.line(start_x, y_baseline, bar_end_x, y_baseline)
+        c.setLineCap(0)
 
         # Draw ticks and dates
-        c.setFont("Helvetica", 8)
         c.setLineWidth(1)
 
         for i in range(num_days):
             current_date = row_start_date.shift(days=i)
             x = start_x + (i * self.day_width)
 
-            # Determine color based on weekend/holiday status
             is_special = self.is_weekend_or_holiday(current_date)
-            color = gray if is_special else black
 
             # Draw tick mark
-            c.setStrokeColor(color)
+            c.setStrokeColor(COLOR_TICK_MUTED if is_special else COLOR_TICK)
             c.line(
                 x,
                 y_baseline - self.tick_height / 2,
@@ -216,12 +386,10 @@ class TimelineGenerator:
             )
 
             # Draw date label
-            c.setFillColor(color)
+            c.setFont("Helvetica", 8)
+            c.setFillColor(COLOR_DATE_MUTED if is_special else COLOR_DATE)
             date_text = current_date.format("M/D")
-            text_width = self.get_text_width(c, date_text, 8)
-            c.drawString(
-                x - text_width / 2, y_baseline - self.tick_height - 12, date_text
-            )
+            c.drawCentredString(x, y_baseline - self.tick_height / 2 - 12, date_text)
 
     def draw_past_day_markers(
         self,
@@ -232,18 +400,31 @@ class TimelineGenerator:
     ) -> None:
         """Draw X marks on past days (before today)."""
         start_x = self.left_margin
-        today = arrow.now().floor("day")
+        today = arrow.utcnow().floor("day")
 
+        c.setStrokeColor(COLOR_PAST_X)
+        c.setLineWidth(1.3)
         for i in range(num_days):
             current_date = row_start_date.shift(days=i)
             if current_date < today:
                 x = start_x + (i * self.day_width)
-                x_size = 4
-                c.setStrokeColor(black)
-                c.setLineWidth(1.5)
+                x_size = 3.5
                 # Draw X on the timeline itself
                 c.line(x - x_size, y_baseline - x_size, x + x_size, y_baseline + x_size)
                 c.line(x - x_size, y_baseline + x_size, x + x_size, y_baseline - x_size)
+
+    def draw_arrowhead(
+        self, c: canvas.Canvas, x: float, y: float, direction: int, color
+    ) -> None:
+        """Draw a small triangle at (x, y) pointing left (-1) or right (+1)."""
+        size = 5
+        p = c.beginPath()
+        p.moveTo(x, y - size * 0.8)
+        p.lineTo(x + direction * size, y)
+        p.lineTo(x, y + size * 0.8)
+        p.close()
+        c.setFillColor(color)
+        c.drawPath(p, fill=1, stroke=0)
 
     def draw_events_for_row(
         self,
@@ -254,341 +435,146 @@ class TimelineGenerator:
     ) -> None:
         """Draw events that appear in this row."""
 
-        row_end_date = row_start_date.shift(days=num_days - 1)
-        start_x = self.left_margin
+        placements, _ = self.layout_events_for_row(row_start_date, num_days)
 
-        # Track occupied text boxes for collision detection
-        occupied_boxes = []
-        # Track occupied Y levels for each X position range to ensure range events don't overlap
-        occupied_ranges = []
+        for p in placements:
+            event = p["event"]
+            color = COLOR_DONE if event.done else event.color
 
-        # Process events that overlap with this row
-        for event in self.events:
-            # Check if event overlaps with this row
-            event_end = event.end if event.end else event.start
+            if p["is_range"]:
+                # Draw a floating bar above the timeline for range events
+                line_y = y_baseline + p["line_y_offset"]
+                c.setStrokeColor(color)
+                c.setLineWidth(4.5)
+                c.setLineCap(1)  # Round caps
+                c.line(p["start_x"], line_y, p["end_x"], line_y)
+                c.setLineCap(0)
 
-            if event.start > row_end_date or event_end < row_start_date:
-                continue  # Event doesn't appear in this row
+                # Arrowheads indicate the event continues on another row
+                if p["continues_left"]:
+                    self.draw_arrowhead(c, p["start_x"], line_y, -1, color)
+                if p["continues_right"]:
+                    self.draw_arrowhead(c, p["end_x"], line_y, 1, color)
 
-            # Calculate event position(s) within the row
-            event_row_start = max(event.start, row_start_date)
-            event_row_end = min(event_end, row_end_date)
-
-            days_from_row_start = (event_row_start - row_start_date).days
-            days_from_row_end = (event_row_end - row_start_date).days
-
-            start_pos_x = start_x + (days_from_row_start * self.day_width)
-            end_pos_x = start_x + (days_from_row_end * self.day_width)
-
-            # If event continues beyond this row, extend line to indicate continuation
-            if event_end > row_end_date:
-                end_pos_x = start_x + (num_days * self.day_width)
-
-            c.setFillColor(red)
-            c.setStrokeColor(red)
-
-            # Determine Y offset for this event based on range overlaps
-            y_offset_for_line = 0
-            if event.is_range:
-                # Check if this range overlaps with any existing ranges
-                for (
-                    occupied_start_x,
-                    occupied_end_x,
-                    occupied_y_offset,
-                ) in occupied_ranges:
-                    # Check for X overlap (with some padding)
-                    if not (
-                        end_pos_x + 5 < occupied_start_x
-                        or start_pos_x > occupied_end_x + 5
-                    ):
-                        # Overlapping, use a higher Y offset
-                        y_offset_for_line = max(
-                            y_offset_for_line, occupied_y_offset + 8
-                        )
-
-                # Record this range's position
-                occupied_ranges.append((start_pos_x, end_pos_x, y_offset_for_line))
-
-                # Draw a red line for range events
-                c.setLineWidth(3)
-                line_y = y_baseline + y_offset_for_line
-                c.line(start_pos_x, line_y, end_pos_x, line_y)
-
-                # Draw endcaps only if the event actually starts/ends in this row
-                endcap_height = 8
-                c.setLineWidth(3)
-
-                # Draw start endcap only if event starts in this row
-                if event.start >= row_start_date:
-                    c.line(
-                        start_pos_x,
-                        line_y - endcap_height / 2,
-                        start_pos_x,
-                        line_y + endcap_height / 2,
-                    )
-
-                # Draw end endcap only if event ends in this row
-                if event.end <= row_end_date:
-                    c.line(
-                        end_pos_x,
-                        line_y - endcap_height / 2,
-                        end_pos_x,
-                        line_y + endcap_height / 2,
-                    )
-
-                # Use middle of the range for text positioning
-                text_x = (start_pos_x + end_pos_x) / 2
+                marker_top = p["line_y_offset"] + 4
             else:
-                # Draw a red dot for point events
-                c.circle(start_pos_x, y_baseline, self.dot_radius, fill=1, stroke=0)
-                text_x = start_pos_x
+                # Draw a colored dot for point events; events sharing a day
+                # split the dot into wedges (half-circles for two)
+                c.setFillColor(color)
+                if p["wedge_count"] > 1:
+                    r = self.dot_radius + 1  # slightly larger so wedges stay legible
+                    extent = 360 / p["wedge_count"]
+                    start_angle = 90 + p["wedge_index"] * extent
+                    c.wedge(
+                        p["marker_x"] - r,
+                        y_baseline - r,
+                        p["marker_x"] + r,
+                        y_baseline + r,
+                        start_angle,
+                        extent,
+                        fill=1,
+                        stroke=0,
+                    )
+                    marker_top = r + 2
+                else:
+                    c.circle(
+                        p["marker_x"], y_baseline, self.dot_radius, fill=1, stroke=0
+                    )
+                    marker_top = self.dot_radius + 2
 
-            # Only draw label if event starts in this row (to avoid duplicate labels on wrapped events)
-            should_draw_label = event.start >= row_start_date
-
-            if should_draw_label:
-                # Draw event label with collision avoidance
-                c.setFont("Helvetica", 10)
-                text_width = self.get_text_width(c, event.name, 10)
-                text_height = 12
-
-                # Try to place text at increasing heights until no collision
-                y_offset = self.event_base_offset + y_offset_for_line
-                max_attempts = 20
-                attempt = 0
-
-                while attempt < max_attempts:
-                    text_x_pos = text_x - text_width / 2
-                    text_y_pos = y_baseline + y_offset
-
-                    # Make sure we don't go too high and push labels off the page
-                    if y_offset > self.max_event_height:
-                        # Place it at max height even if there's overlap
-                        c.drawString(
-                            text_x_pos, y_baseline + self.max_event_height, event.name
-                        )
-                        # Draw strikethrough if done
-                        if event.done:
-                            c.setStrokeColor(black)
-                            c.setLineWidth(1.5)
-                            c.line(
-                                text_x_pos,
-                                y_baseline
-                                + self.max_event_height
-                                + text_height / 2
-                                - 3,
-                                text_x_pos + text_width,
-                                y_baseline
-                                + self.max_event_height
-                                + text_height / 2
-                                - 3,
-                            )
-                            c.setStrokeColor(red)
-                        occupied_boxes.append(
-                            (
-                                text_x_pos,
-                                y_baseline + self.max_event_height,
-                                text_width,
-                                text_height,
-                            )
-                        )
-                        break
-
-                    if not self.check_text_overlap(
-                        text_x_pos, text_y_pos, text_width, text_height, occupied_boxes
-                    ):
-                        # No collision, draw the text
-                        c.drawString(text_x_pos, text_y_pos, event.name)
-                        # Draw strikethrough if done
-                        if event.done:
-                            c.setStrokeColor(black)
-                            c.setLineWidth(1.5)
-                            c.line(
-                                text_x_pos,
-                                text_y_pos + text_height / 2 - 3,
-                                text_x_pos + text_width,
-                                text_y_pos + text_height / 2 - 3,
-                            )
-                            c.setStrokeColor(red)
-                        occupied_boxes.append(
-                            (text_x_pos, text_y_pos, text_width, text_height)
-                        )
-                        break
-
-                    # Collision detected, try higher position
-                    y_offset += self.event_vertical_spacing
-                    attempt += 1
-
-    def estimate_row_label_top(
-        self, row_start_date: arrow.Arrow, num_days: int
-    ) -> float:
-        """Estimate highest Y position (relative to baseline) used by labels in a row."""
-        row_end_date = row_start_date.shift(days=num_days - 1)
-        start_x = self.left_margin
-
-        occupied_boxes = []
-        occupied_ranges = []
-        text_height = 12
-        max_label_top = 0.0
-
-        for event in self.events:
-            event_end = event.end if event.end else event.start
-
-            if event.start > row_end_date or event_end < row_start_date:
+            if p["label_y"] is None:
                 continue
 
-            event_row_start = max(event.start, row_start_date)
-            event_row_end = min(event_end, row_end_date)
+            label_y_abs = y_baseline + p["label_y"]
 
-            days_from_row_start = (event_row_start - row_start_date).days
-            days_from_row_end = (event_row_end - row_start_date).days
+            # Leader line connecting a raised label back to its marker
+            if p["label_y"] - 3 - marker_top > 10:
+                c.setStrokeColor(color, alpha=0.4)
+                c.setLineWidth(0.8)
+                c.line(
+                    p["marker_x"],
+                    y_baseline + marker_top,
+                    p["marker_x"],
+                    label_y_abs - 3,
+                )
+                c.setStrokeAlpha(1)
 
-            start_pos_x = start_x + (days_from_row_start * self.day_width)
-            end_pos_x = start_x + (days_from_row_end * self.day_width)
+            # Draw the label
+            c.setFont(*self.label_font)
+            c.setFillColor(color)
+            c.drawString(p["label_x"], label_y_abs, event.name)
 
-            if event_end > row_end_date:
-                end_pos_x = start_x + (num_days * self.day_width)
+            if event.done:
+                c.setStrokeColor(COLOR_DONE)
+                c.setLineWidth(1.2)
+                strike_y = label_y_abs + self.label_text_height / 2 - 3
+                c.line(
+                    p["label_x"], strike_y, p["label_x"] + p["text_width"], strike_y
+                )
 
-            y_offset_for_line = 0
-            if event.is_range:
-                for (
-                    occupied_start_x,
-                    occupied_end_x,
-                    occupied_y_offset,
-                ) in occupied_ranges:
-                    if not (
-                        end_pos_x + 5 < occupied_start_x
-                        or start_pos_x > occupied_end_x + 5
-                    ):
-                        y_offset_for_line = max(
-                            y_offset_for_line, occupied_y_offset + 8
-                        )
+    def draw_page_header(self, c: canvas.Canvas) -> None:
+        """Draw the title, subtitle, and footer on the current page."""
+        if self.title:
+            title_y = self.page_height - self.base_top_margin
+            c.setFont("Helvetica-Bold", 18)
+            c.setFillColor(COLOR_TITLE)
+            c.drawCentredString(self.page_width / 2, title_y, self.title)
 
-                occupied_ranges.append((start_pos_x, end_pos_x, y_offset_for_line))
-                text_x = (start_pos_x + end_pos_x) / 2
-            else:
-                text_x = start_pos_x
+            subtitle = (
+                f"{self.start_date.format('MMM D')} – "
+                f"{self.end_date.format('MMM D, YYYY')}"
+            )
+            c.setFont("Helvetica", 9.5)
+            c.setFillColor(COLOR_SUBTITLE)
+            c.drawCentredString(self.page_width / 2, title_y - 16, subtitle)
 
-            should_draw_label = event.start >= row_start_date
-
-            if not should_draw_label:
-                continue
-
-            text_width = stringWidth(event.name, "Helvetica", 10)
-            y_offset = self.event_base_offset + y_offset_for_line
-            max_attempts = 20
-            attempt = 0
-
-            while attempt < max_attempts:
-                if y_offset > self.max_event_height:
-                    placed_y = self.max_event_height
-                    max_label_top = max(max_label_top, placed_y + text_height)
-                    occupied_boxes.append(
-                        (
-                            text_x - text_width / 2,
-                            placed_y,
-                            text_width,
-                            text_height,
-                        )
-                    )
-                    break
-
-                text_x_pos = text_x - text_width / 2
-                text_y_pos = y_offset
-
-                if not self.check_text_overlap(
-                    text_x_pos,
-                    text_y_pos,
-                    text_width,
-                    text_height,
-                    occupied_boxes,
-                ):
-                    max_label_top = max(max_label_top, text_y_pos + text_height)
-                    occupied_boxes.append(
-                        (text_x_pos, text_y_pos, text_width, text_height)
-                    )
-                    break
-
-                y_offset += self.event_vertical_spacing
-                attempt += 1
-
-        return max_label_top
-
-    def get_first_row_baseline_offset(
-        self, row_start_date: arrow.Arrow, num_days: int
-    ) -> float:
-        """Compute first-row baseline offset, increasing it for stacked labels under a title."""
-        if not self.title:
-            return self.base_first_row_baseline_offset
-
-        max_label_top = self.estimate_row_label_top(row_start_date, num_days)
-        required_gap = max_label_top + self.title_label_vertical_padding
-
-        # title_y - baseline_y = offset + (top_margin - base_top_margin - 5)
-        static_gap = self.top_margin - self.base_top_margin - 5
-        required_offset = required_gap - static_gap
-
-        return max(self.base_first_row_baseline_offset, required_offset)
+        c.setFont("Helvetica", 7)
+        c.setFillColor(COLOR_FOOTER)
+        c.drawRightString(
+            self.page_width - self.right_margin,
+            0.4 * inch,
+            f"Generated {arrow.now().format('MMM D, YYYY')}",
+        )
 
     def generate(self) -> None:
         """Generate the PDF timeline."""
         c = canvas.Canvas(self.output_file, pagesize=landscape(letter))
 
-        # Draw title if present
-        if self.title:
-            c.setFont("Helvetica-Bold", 16)
-            c.setFillColor(black)
-            title_width = c.stringWidth(self.title, "Helvetica-Bold", 16)
-            title_x = (self.page_width - title_width) / 2
-            title_y = self.page_height - self.base_top_margin - 5
-            c.drawString(title_x, title_y, self.title)
-
-        # Calculate number of rows needed
-        num_rows = math.ceil(self.total_days / self.max_days_per_row)
-
-        # Start from top of page
+        # Split the timeline into rows
+        rows = []
         current_date = self.start_date
+        remaining = self.total_days
+        while remaining > 0:
+            days_in_row = min(self.max_days_per_row, remaining)
+            rows.append((current_date, days_in_row))
+            current_date = current_date.shift(days=days_in_row)
+            remaining -= days_in_row
+
+        self.draw_page_header(c)
+        page_top = self.page_height - self.top_margin
         current_y = None
 
-        for row in range(num_rows):
-            # Calculate how many days in this row
-            remaining_days = self.total_days - (row * self.max_days_per_row)
-            days_in_row = min(self.max_days_per_row, remaining_days)
+        for row_date, days_in_row in rows:
+            # Space rows based on how high this row's labels actually stack
+            _, label_top = self.layout_events_for_row(row_date, days_in_row)
+            label_top = max(label_top, self.event_base_offset + 12)
+            gap_above = label_top + 8
 
             if current_y is None:
-                first_row_offset = self.get_first_row_baseline_offset(
-                    current_date, days_in_row
-                )
-                current_y = self.page_height - self.top_margin - first_row_offset
+                current_y = page_top - gap_above
+            else:
+                current_y -= self.row_depth_below + gap_above
 
             # Check if we need a new page
-            if current_y < self.bottom_margin + self.row_spacing:
+            if current_y < self.bottom_margin + self.row_depth_below:
                 c.showPage()
-                # Draw title on new page if present
-                if self.title:
-                    c.setFont("Helvetica-Bold", 16)
-                    c.setFillColor(black)
-                    title_width = c.stringWidth(self.title, "Helvetica-Bold", 16)
-                    title_x = (self.page_width - title_width) / 2
-                    title_y = self.page_height - self.base_top_margin - 5
-                    c.drawString(title_x, title_y, self.title)
-                first_row_offset = self.get_first_row_baseline_offset(
-                    current_date, days_in_row
-                )
-                current_y = self.page_height - self.top_margin - first_row_offset
+                self.draw_page_header(c)
+                current_y = page_top - gap_above
 
-            # Draw the timeline row
-            self.draw_timeline_row(c, current_date, days_in_row, current_y)
-
-            # Draw events for this row
-            self.draw_events_for_row(c, current_date, days_in_row, current_y)
-
-            # Draw X's on past days (drawn last so they appear on top)
-            self.draw_past_day_markers(c, current_date, days_in_row, current_y)
-
-            # Move to next row
-            current_date = current_date.shift(days=days_in_row)
-            current_y -= self.row_spacing
+            self.draw_timeline_row(c, row_date, days_in_row, current_y)
+            self.draw_events_for_row(c, row_date, days_in_row, current_y)
+            # X's on past days drawn last so they appear on top
+            self.draw_past_day_markers(c, row_date, days_in_row, current_y)
 
         # Save the PDF
         c.save()
