@@ -2,7 +2,7 @@
 Timeline PDF Generator using ReportLab
 
 This module generates PDF timelines with events, handling:
-- Weekend and holiday graying
+- Weekend and holiday graying, with holiday names under the dates
 - Point events (colored dots) and range events (colored bars)
 - Same-day point events split the dot into wedges (half-circles for two)
 - Automatic wrapping for long timelines
@@ -102,9 +102,13 @@ class TimelineGenerator:
                 palette_index += 1
         self.events = sorted(events, key=lambda e: e.start)
         self.output_file = output_file
-        # custom_holidays is a list of tuples: (start_date, end_date)
-        # For single-day holidays, start_date == end_date
-        self.custom_holidays = custom_holidays or []
+        # custom_holidays entries are (start_date, end_date) or
+        # (start_date, end_date, name); normalize to 3-tuples with the
+        # name defaulting to None. Single-day holidays have start == end.
+        self.custom_holidays = [
+            (h[0], h[1], h[2] if len(h) > 2 else None)
+            for h in (custom_holidays or [])
+        ]
         self.us_holidays = holidays.UnitedStates()
         self.title = title
 
@@ -168,11 +172,25 @@ class TimelineGenerator:
             return True
 
         # Check custom holidays (supports date ranges)
-        for holiday_start, holiday_end in self.custom_holidays:
+        for holiday_start, holiday_end, _ in self.custom_holidays:
             if holiday_start <= date <= holiday_end:
                 return True
 
         return False
+
+    def holiday_name(self, date: arrow.Arrow) -> Optional[str]:
+        """Return the holiday name for a date, or None (weekends have no name)."""
+        us_name = self.us_holidays.get(date.date())
+        if us_name:
+            # Strip "(observed)" so the observed day and the actual day
+            # merge into a single label when adjacent
+            return us_name.replace(" (observed)", "")
+
+        for holiday_start, holiday_end, name in self.custom_holidays:
+            if name and holiday_start <= date <= holiday_end:
+                return name
+
+        return None
 
     def is_past_day(self, date: arrow.Arrow) -> bool:
         """True if a date is before today in local time.
@@ -409,15 +427,29 @@ class TimelineGenerator:
             date_text = current_date.format("M/D")
             c.drawCentredString(x, y_baseline - self.tick_height / 2 - 12, date_text)
 
-        # Month names under the row: at the row's first day and at each
-        # month boundary within the row
-        c.setFont("Helvetica-Bold", 7)
+        # Holiday names under the dates, one label per consecutive run;
+        # labels that would overlap an earlier one are skipped
+        c.setFont("Helvetica-Oblique", 6.5)
         c.setFillColor(COLOR_SUBTITLE)
-        for i in range(num_days):
-            current_date = row_start_date.shift(days=i)
-            if i == 0 or current_date.day == 1:
-                x = start_x + (i * self.day_width)
-                c.drawString(x, y_baseline - 36, current_date.format("MMMM").upper())
+        last_label_end = float("-inf")
+        i = 0
+        while i < num_days:
+            name = self.holiday_name(row_start_date.shift(days=i))
+            if name:
+                j = i
+                while (
+                    j + 1 < num_days
+                    and self.holiday_name(row_start_date.shift(days=j + 1)) == name
+                ):
+                    j += 1
+                center_x = start_x + ((i + j) / 2) * self.day_width
+                name_width = stringWidth(name, "Helvetica-Oblique", 6.5)
+                if center_x - name_width / 2 > last_label_end + 4:
+                    c.drawCentredString(center_x, y_baseline - 36, name)
+                    last_label_end = center_x + name_width / 2
+                i = j + 1
+            else:
+                i += 1
 
     def draw_past_day_markers(
         self,
@@ -699,17 +731,18 @@ def main(config_file, output):
                     date = arrow.get(holiday_data)
                     custom_holidays.append((date, date))
                 elif isinstance(holiday_data, dict):
-                    # Date range with start and end
+                    # Date range with start, end, and optional name
                     start_str = holiday_data.get("start")
                     end_str = holiday_data.get("end")
+                    holiday_name = holiday_data.get("name")
                     if start_str and end_str:
                         start = arrow.get(start_str)
                         end = arrow.get(end_str)
-                        custom_holidays.append((start, end))
+                        custom_holidays.append((start, end, holiday_name))
                     elif start_str:
                         # Only start provided, treat as single day
                         date = arrow.get(start_str)
-                        custom_holidays.append((date, date))
+                        custom_holidays.append((date, date, holiday_name))
                     else:
                         click.echo(
                             f"Warning: Invalid holiday data: {holiday_data}", err=True

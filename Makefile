@@ -7,3 +7,7 @@ timeline.pdf: events.yaml timeline.py
 .PHONY: test
 test:
 	$(PYTHON) -m pytest
+
+.PHONY: lint
+lint:
+	$(PYTHON) -m ruff check .

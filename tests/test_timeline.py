@@ -3,7 +3,6 @@
 import re
 
 import arrow
-import pytest
 from click.testing import CliRunner
 
 from reportlab.lib.colors import HexColor
@@ -125,6 +124,39 @@ def test_custom_holiday_range_detected():
     assert gen.is_weekend_or_holiday(arrow.get("2026-06-15"))
     assert gen.is_weekend_or_holiday(arrow.get("2026-06-17"))
     assert not gen.is_weekend_or_holiday(arrow.get("2026-06-18"))
+
+
+def test_us_holiday_name():
+    gen = make_generator([point("A", "2026-06-10")])
+    assert gen.holiday_name(arrow.get("2026-11-26")) == "Thanksgiving Day"
+    assert gen.holiday_name(arrow.get("2026-06-13")) is None  # plain Saturday
+
+
+def test_observed_suffix_stripped_so_adjacent_days_merge():
+    gen = make_generator([point("A", "2026-06-10")])
+    # July 4, 2026 is a Saturday; July 3 is the observed holiday
+    assert gen.holiday_name(arrow.get("2026-07-03")) == "Independence Day"
+    assert gen.holiday_name(arrow.get("2026-07-04")) == "Independence Day"
+
+
+def test_custom_holiday_name():
+    gen = make_generator(
+        [point("A", "2026-06-10")],
+        custom_holidays=[
+            (arrow.get("2026-06-15"), arrow.get("2026-06-17"), "Lab Retreat")
+        ],
+    )
+    assert gen.holiday_name(arrow.get("2026-06-16")) == "Lab Retreat"
+    assert gen.holiday_name(arrow.get("2026-06-18")) is None
+
+
+def test_unnamed_custom_holiday_has_no_name_but_is_grayed():
+    gen = make_generator(
+        [point("A", "2026-06-10")],
+        custom_holidays=[(arrow.get("2026-06-15"), arrow.get("2026-06-15"))],
+    )
+    assert gen.is_weekend_or_holiday(arrow.get("2026-06-15"))
+    assert gen.holiday_name(arrow.get("2026-06-15")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +397,30 @@ def test_cli_rejects_config_without_events(tmp_path):
     result = runner.invoke(main, [str(config)])
 
     assert result.exit_code == 1
+
+
+def test_cli_parses_named_custom_holiday(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+timeline_start: "2026-06-08"
+custom_holidays:
+  - "2026-06-15"
+  - start: "2026-06-16"
+    end: "2026-06-17"
+    name: "Lab Retreat"
+events:
+  - name: A
+    start: 2026-06-10
+"""
+    )
+    output = tmp_path / "out.pdf"
+
+    runner = CliRunner()
+    result = runner.invoke(main, [str(config), "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert output.exists()
 
 
 def test_cli_parses_event_color(tmp_path):

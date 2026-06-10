@@ -11,12 +11,15 @@ title: "Project Timeline - Q4 2025"
 # timeline_end: "2025-12-31"
 
 # Optional: Specify custom holidays in addition to US federal holidays
-# Supports both single dates (YYYY-MM-DD) and date ranges (start/end)
+# Supports both single dates (YYYY-MM-DD) and date ranges (start/end),
+# with an optional name printed under the dates
 custom_holidays:
   - "2025-11-29" # Single day company holiday
-  - "2025-12-24" # Christmas Eve
+  - start: "2025-12-24"
+    name: "Christmas Eve"
   - start: "2025-12-25" # Multi-day holiday range
     end: "2025-12-26"
+    name: "Christmas Break"
 
 # Events can have:
 # - name: Required event name/label
