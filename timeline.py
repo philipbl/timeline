@@ -29,14 +29,14 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.colors import HexColor
 
 
-# Print-friendly colors, dark enough to double as label text
+# Bright, playful palette — still dark enough to double as label text
 EVENT_COLORS = [
-    "#C0392B",  # red
-    "#1F618D",  # blue
-    "#1E8449",  # green
-    "#B9770E",  # amber
-    "#7D3C98",  # purple
-    "#148F77",  # teal
+    "#FF6B6B",  # coral
+    "#3A86FF",  # bright blue
+    "#FF9F1C",  # tangerine
+    "#9B5DE5",  # violet
+    "#00A878",  # jade
+    "#E84A8A",  # pink
 ]
 
 COLOR_BAR = HexColor("#33333B")
@@ -61,13 +61,15 @@ class Event:
         start: arrow.Arrow,
         end: Optional[arrow.Arrow] = None,
         done: bool = False,
+        color=None,
     ):
         self.name = name
         self.start = start
         self.end = end
         self.is_range = end is not None
         self.done = done
-        self.color = HexColor(EVENT_COLORS[0])
+        # None means "assign from the default palette"
+        self.color = color
 
     def __repr__(self):
         status = " (done)" if self.done else ""
@@ -88,9 +90,17 @@ class TimelineGenerator:
         custom_holidays: Optional[List[Tuple[arrow.Arrow, arrow.Arrow]]] = None,
         title: Optional[str] = None,
     ):
+        # Assign default colors in the order events were listed (before
+        # sorting) so adding or re-dating an event doesn't reshuffle the
+        # colors of the others; explicit colors are left untouched
+        palette_index = 0
+        for event in events:
+            if event.color is None:
+                event.color = HexColor(
+                    EVENT_COLORS[palette_index % len(EVENT_COLORS)]
+                )
+                palette_index += 1
         self.events = sorted(events, key=lambda e: e.start)
-        for i, event in enumerate(self.events):
-            event.color = HexColor(EVENT_COLORS[i % len(EVENT_COLORS)])
         self.output_file = output_file
         # custom_holidays is a list of tuples: (start_date, end_date)
         # For single-day holidays, start_date == end_date
@@ -163,6 +173,14 @@ class TimelineGenerator:
                 return True
 
         return False
+
+    def is_past_day(self, date: arrow.Arrow) -> bool:
+        """True if a date is before today in local time.
+
+        Compares calendar dates (not instants) so a UTC-parsed event date
+        isn't marked past while it is still today locally.
+        """
+        return date.date() < arrow.now().date()
 
     def check_text_overlap(
         self,
@@ -391,6 +409,16 @@ class TimelineGenerator:
             date_text = current_date.format("M/D")
             c.drawCentredString(x, y_baseline - self.tick_height / 2 - 12, date_text)
 
+        # Month names under the row: at the row's first day and at each
+        # month boundary within the row
+        c.setFont("Helvetica-Bold", 7)
+        c.setFillColor(COLOR_SUBTITLE)
+        for i in range(num_days):
+            current_date = row_start_date.shift(days=i)
+            if i == 0 or current_date.day == 1:
+                x = start_x + (i * self.day_width)
+                c.drawString(x, y_baseline - 36, current_date.format("MMMM").upper())
+
     def draw_past_day_markers(
         self,
         c: canvas.Canvas,
@@ -400,13 +428,12 @@ class TimelineGenerator:
     ) -> None:
         """Draw X marks on past days (before today)."""
         start_x = self.left_margin
-        today = arrow.utcnow().floor("day")
 
         c.setStrokeColor(COLOR_PAST_X)
         c.setLineWidth(1.3)
         for i in range(num_days):
             current_date = row_start_date.shift(days=i)
-            if current_date < today:
+            if self.is_past_day(current_date):
                 x = start_x + (i * self.day_width)
                 x_size = 3.5
                 # Draw X on the timeline itself
@@ -616,15 +643,27 @@ def main(config_file, output):
         start_str = event_data.get("start")
         end_str = event_data.get("end")
         done = event_data.get("done", False)
+        color_str = event_data.get("color")
 
         if not name or not start_str:
             click.echo(f"Warning: Skipping invalid event: {event_data}", err=True)
             continue
 
+        color = None
+        if color_str:
+            try:
+                color = HexColor(color_str)
+            except ValueError:
+                click.echo(
+                    f"Warning: Invalid color '{color_str}' for event '{name}', "
+                    "using default palette",
+                    err=True,
+                )
+
         try:
             start = arrow.get(start_str)
             end = arrow.get(end_str) if end_str else None
-            events.append(Event(name, start, end, done))
+            events.append(Event(name, start, end, done, color))
         except Exception as e:
             click.echo(f"Warning: Could not parse event '{name}': {e}", err=True)
             continue

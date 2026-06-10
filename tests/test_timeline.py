@@ -6,6 +6,8 @@ import arrow
 import pytest
 from click.testing import CliRunner
 
+from reportlab.lib.colors import HexColor
+
 from timeline import EVENT_COLORS, Event, TimelineGenerator, main
 
 
@@ -68,6 +70,33 @@ def test_event_colors_cycle_through_palette():
     gen = make_generator(events)
     assert gen.events[0].color == gen.events[len(EVENT_COLORS)].color
     assert gen.events[0].color != gen.events[1].color
+
+
+def test_default_colors_assigned_in_listed_order_not_date_order():
+    # "Late" listed first gets the first palette color even though it
+    # sorts after "Early" — re-dating events must not reshuffle colors
+    late = point("Late", "2026-06-20")
+    early = point("Early", "2026-06-09")
+    make_generator([late, early])
+    assert late.color == HexColor(EVENT_COLORS[0])
+    assert early.color == HexColor(EVENT_COLORS[1])
+
+
+def test_explicit_color_respected_and_skipped_in_palette():
+    custom = Event("Custom", arrow.get("2026-06-10"), color=HexColor("#123456"))
+    default = point("Default", "2026-06-11")
+    make_generator([custom, default])
+    assert custom.color == HexColor("#123456")
+    # Palette assignment skips events with explicit colors
+    assert default.color == HexColor(EVENT_COLORS[0])
+
+
+def test_is_past_day_uses_local_dates():
+    gen = make_generator([point("A", "2026-06-10")])
+    today = arrow.now()
+    assert gen.is_past_day(today.shift(days=-1))
+    assert not gen.is_past_day(today)
+    assert not gen.is_past_day(today.shift(days=1))
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +365,47 @@ def test_cli_rejects_config_without_events(tmp_path):
     result = runner.invoke(main, [str(config)])
 
     assert result.exit_code == 1
+
+
+def test_cli_parses_event_color(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+timeline_start: "2026-06-08"
+events:
+  - name: Colored
+    start: 2026-06-10
+    color: "#123456"
+"""
+    )
+    output = tmp_path / "out.pdf"
+
+    runner = CliRunner()
+    result = runner.invoke(main, [str(config), "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert output.exists()
+
+
+def test_cli_warns_on_invalid_color(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+timeline_start: "2026-06-08"
+events:
+  - name: Bad Color
+    start: 2026-06-10
+    color: "not-a-color"
+"""
+    )
+    output = tmp_path / "out.pdf"
+
+    runner = CliRunner()
+    result = runner.invoke(main, [str(config), "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert "Invalid color" in result.output
+    assert output.exists()
 
 
 def test_cli_skips_invalid_events_with_warning(tmp_path):
