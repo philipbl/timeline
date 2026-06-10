@@ -71,14 +71,21 @@ def test_event_colors_cycle_through_palette():
     assert gen.events[0].color != gen.events[1].color
 
 
-def test_default_colors_assigned_in_listed_order_not_date_order():
-    # "Late" listed first gets the first palette color even though it
-    # sorts after "Early" — re-dating events must not reshuffle colors
+def test_default_colors_assigned_in_date_order():
+    # Colors follow timeline order regardless of YAML listing order, so
+    # chronologically adjacent events never share a color
     late = point("Late", "2026-06-20")
     early = point("Early", "2026-06-09")
     make_generator([late, early])
-    assert late.color == HexColor(EVENT_COLORS[0])
-    assert early.color == HexColor(EVENT_COLORS[1])
+    assert early.color == HexColor(EVENT_COLORS[0])
+    assert late.color == HexColor(EVENT_COLORS[1])
+
+
+def test_adjacent_events_never_share_color():
+    events = [point(f"E{i}", f"2026-06-{9 + i}") for i in range(10)]
+    gen = make_generator(events)
+    for a, b in zip(gen.events, gen.events[1:]):
+        assert a.color != b.color
 
 
 def test_explicit_color_respected_and_skipped_in_palette():

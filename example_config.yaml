@@ -27,7 +27,8 @@ custom_holidays:
 # - end: Optional end date (YYYY-MM-DD) - if omitted, shows as a dot; if present, shows as a line
 # - done: Optional boolean (true/false) - if true, event name will be crossed out and X's won't be drawn
 # - color: Optional hex color (e.g. "#3A86FF") - if omitted, colors are assigned
-#   from the default palette in the order events are listed
+#   from the default palette in chronological order, so neighboring events
+#   never share a color
 events:
   - name: "Project Kickoff"
     start: "2025-11-20"

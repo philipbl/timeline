@@ -90,17 +90,17 @@ class TimelineGenerator:
         custom_holidays: Optional[List[Tuple[arrow.Arrow, arrow.Arrow]]] = None,
         title: Optional[str] = None,
     ):
-        # Assign default colors in the order events were listed (before
-        # sorting) so adding or re-dating an event doesn't reshuffle the
-        # colors of the others; explicit colors are left untouched
+        # Assign default colors in chronological order so events adjacent
+        # on the timeline never share a color (palette repeats only every
+        # len(EVENT_COLORS)th event); explicit colors are left untouched
+        self.events = sorted(events, key=lambda e: e.start)
         palette_index = 0
-        for event in events:
+        for event in self.events:
             if event.color is None:
                 event.color = HexColor(
                     EVENT_COLORS[palette_index % len(EVENT_COLORS)]
                 )
                 palette_index += 1
-        self.events = sorted(events, key=lambda e: e.start)
         self.output_file = output_file
         # custom_holidays entries are (start_date, end_date) or
         # (start_date, end_date, name); normalize to 3-tuples with the
