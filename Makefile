@@ -11,3 +11,17 @@ test:
 .PHONY: lint
 lint:
 	$(PYTHON) -m ruff check .
+
+# Native Mac app
+.PHONY: app
+app:
+	cd TimelineApp && swift build -c release
+	rm -rf build/Timeline.app
+	mkdir -p build/Timeline.app/Contents/MacOS
+	cp TimelineApp/.build/release/TimelineApp build/Timeline.app/Contents/MacOS/Timeline
+	cp TimelineApp/Info.plist build/Timeline.app/Contents/Info.plist
+	codesign --force -s - build/Timeline.app
+
+.PHONY: run-app
+run-app: app
+	open build/Timeline.app
