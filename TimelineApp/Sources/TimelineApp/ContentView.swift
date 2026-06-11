@@ -8,6 +8,9 @@ struct ContentView: View {
     @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
     @AppStorage("editorWidth") private var editorWidth: Double = 380
+    /// Snapshot taken when a canvas drag starts, so the whole drag
+    /// becomes a single undo step on release.
+    @State private var dragOriginalConfig: TimelineConfig?
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -31,7 +34,7 @@ struct ContentView: View {
                                 }
                             })
                 }
-                PreviewView(config: document.config)
+                PreviewView(config: document.config, onEventMoved: moveEvent)
                     .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
             }
 
@@ -165,6 +168,44 @@ struct ContentView: View {
                 includeGenerated: generatedCheckbox.state == .on, dark: dark)
         } catch {
             presentError(error)
+        }
+    }
+
+    /// Shift an event by whole days during a canvas drag. Live changes
+    /// bypass the undo manager; the release registers one undo step.
+    private func moveEvent(id: UUID, dayDelta: Int, isFinal: Bool) {
+        if dragOriginalConfig == nil { dragOriginalConfig = document.config }
+        guard let original = dragOriginalConfig,
+              let index = original.events.firstIndex(where: { $0.id == id })
+        else { return }
+
+        var shifted = original
+        var event = shifted.events[index]
+        let duration = event.start.days(until: event.effectiveEnd)
+
+        var newStart = event.start.shifted(days: dayDelta)
+        // Keep the event inside explicit timeline bounds
+        if let timelineStart = shifted.timelineStart, newStart < timelineStart {
+            newStart = timelineStart
+        }
+        if let timelineEnd = shifted.timelineEnd {
+            let lastStart = timelineEnd.shifted(days: -duration)
+            if newStart > lastStart { newStart = lastStart }
+        }
+        if event.end != nil {
+            event.end = newStart.shifted(days: duration)
+        }
+        event.start = newStart
+        shifted.events[index] = event
+        shifted.events.sort { $0.start < $1.start }
+
+        if isFinal {
+            // Restore the original so the undo snapshot covers the drag
+            document.config = original
+            document.update(shifted, undoManager: undoManager)
+            dragOriginalConfig = nil
+        } else {
+            document.config = shifted
         }
     }
 

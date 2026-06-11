@@ -515,6 +515,38 @@ struct TimelineRenderer {
             labelTextHeight: labelTextHeight, maxLabelTop: &unused)
     }
 
+    // MARK: - Hit testing
+
+    /// The event at a canvas point (bottom-left origin), if any.
+    /// Markers, bars, and labels are all grabbable, with a little slop.
+    func eventID(at point: CGPoint) -> UUID? {
+        for row in rows {
+            let placements = layoutEvents(forRow: row.startDay, numDays: row.numDays)
+            // Later placements draw on top, so search them first
+            for p in placements.reversed() {
+                if p.isRange {
+                    let bar = CGRect(
+                        x: min(p.startX, p.endX) - 4,
+                        y: row.baselineY + p.lineYOffset - 7,
+                        width: abs(p.endX - p.startX) + 8, height: 14)
+                    if bar.contains(point) { return p.event.id }
+                } else {
+                    let slop = dotRadius + 5
+                    let dx = point.x - p.markerX
+                    let dy = point.y - row.baselineY
+                    if dx * dx + dy * dy <= slop * slop { return p.event.id }
+                }
+                if let labelX = p.labelX, let labelY = p.labelY {
+                    let label = CGRect(
+                        x: labelX - 2, y: row.baselineY + labelY - 3,
+                        width: p.textWidth + 4, height: labelTextHeight + 4)
+                    if label.contains(point) { return p.event.id }
+                }
+            }
+        }
+        return nil
+    }
+
     // MARK: - Drawing
 
     /// Draw one page (paged) or the whole canvas (continuous, page 0)

@@ -339,6 +339,42 @@ enum SelfTests {
             expect(!renderer.isHoliday(day("2026-06-18")))
         }
 
+        // Hit testing
+        test("hitTestFindsDotBarAndLabel") {
+            let dot = point("Dot", "2026-06-10")
+            let bar = span("Bar", "2026-06-13", "2026-06-16")
+            let config = makeConfig(end: "2026-06-22", events: [dot, bar])
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            let row = renderer.rows[0]
+
+            // Dot marker: 2 days from row start
+            let dotX = renderer.leftMargin + 2 * renderer.dayWidth
+            expect(renderer.eventID(at: CGPoint(x: dotX, y: row.baselineY)) == dot.id)
+
+            // Bar: above the baseline at its stack offset, mid-span
+            let barX = renderer.leftMargin + 6.5 * renderer.dayWidth
+            expect(
+                renderer.eventID(
+                    at: CGPoint(x: barX, y: row.baselineY + renderer.rangeBaseOffset))
+                    == bar.id)
+
+            // Label of the dot
+            let placements = renderer.layoutEvents(
+                forRow: row.startDay, numDays: row.numDays)
+            let dotPlacement = placements.first { $0.event.id == dot.id }!
+            expect(
+                renderer.eventID(
+                    at: CGPoint(
+                        x: dotPlacement.labelX! + 2,
+                        y: row.baselineY + dotPlacement.labelY! + 2)) == dot.id)
+
+            // Empty space misses
+            expect(
+                renderer.eventID(
+                    at: CGPoint(x: renderer.leftMargin + 11 * renderer.dayWidth,
+                                y: row.baselineY)) == nil)
+        }
+
         // Exports
         test("pdfExportProducesValidData") {
             let config = makeConfig(
