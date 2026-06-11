@@ -157,8 +157,14 @@ struct ContentView: View {
             guard let pdf = PDFDocument(data: data) else { return }
             let printInfo = NSPrintInfo()
             printInfo.orientation = .landscape
+            // Zero margins + 1:1 scale so the printed page matches the
+            // exported PDF exactly (default printer margins shrink it)
+            printInfo.topMargin = 0
+            printInfo.bottomMargin = 0
+            printInfo.leftMargin = 0
+            printInfo.rightMargin = 0
             guard let operation = pdf.printOperation(
-                for: printInfo, scalingMode: .pageScaleDownToFit, autoRotate: true)
+                for: printInfo, scalingMode: .pageScaleNone, autoRotate: true)
             else { return }
             operation.run()
         } catch {
