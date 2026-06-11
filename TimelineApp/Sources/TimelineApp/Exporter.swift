@@ -63,14 +63,17 @@ enum Exporter {
         return ctx.makeImage()
     }
 
-    /// PNG export: one continuous image, white background, title once.
+    /// Background hex used by dark renders (preview canvas and dark PNG).
+    static let darkBackgroundHex = "#1B1B20"
+
+    /// PNG export: one continuous image, title once.
     /// Scale 1 = 72 dpi, 2 = 144 dpi, 4 = 288 dpi.
     static func writePNG(
         for config: TimelineConfig, to url: URL, scale: CGFloat = 2,
-        includeGenerated: Bool = false
+        includeGenerated: Bool = false, dark: Bool = false
     ) throws {
         let renderer = TimelineRenderer(
-            config: config, layout: .continuous, theme: .light,
+            config: config, layout: .continuous, theme: dark ? .dark : .light,
             includeGenerated: includeGenerated)
         let size = renderer.canvasSize
         let width = Int(size.width * scale)
@@ -84,7 +87,8 @@ enum Exporter {
         else { throw ExportError.contextCreationFailed }
 
         ctx.scaleBy(x: scale, y: scale)
-        ctx.setFillColor(.white)
+        ctx.setFillColor(
+            dark ? TimelineRenderer.cg(darkBackgroundHex) : .white)
         ctx.fill(CGRect(origin: .zero, size: size))
         ctx.setShouldAntialias(true)
         ctx.setShouldSmoothFonts(true)
@@ -99,5 +103,36 @@ enum Exporter {
             throw ExportError.contextCreationFailed
         }
         try data.write(to: url)
+    }
+
+    /// Mean per-channel difference between two PNGs, as a percentage.
+    /// Returns nil if either image fails to load or sizes differ.
+    static func imageDifferencePercent(_ urlA: URL, _ urlB: URL) -> Double? {
+        func pixels(_ url: URL) -> (data: [UInt8], width: Int, height: Int)? {
+            guard let image = NSImage(contentsOf: url)?
+                .cgImage(forProposedRect: nil, context: nil, hints: nil)
+            else { return nil }
+            let width = image.width
+            let height = image.height
+            var data = [UInt8](repeating: 0, count: width * height * 4)
+            guard let ctx = CGContext(
+                data: &data, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return nil }
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return (data, width, height)
+        }
+
+        guard let a = pixels(urlA), let b = pixels(urlB),
+              a.width == b.width, a.height == b.height
+        else { return nil }
+
+        var total: UInt64 = 0
+        for i in 0..<a.data.count {
+            total += UInt64(abs(Int(a.data[i]) - Int(b.data[i])))
+        }
+        return Double(total) / Double(a.data.count) / 255 * 100
     }
 }

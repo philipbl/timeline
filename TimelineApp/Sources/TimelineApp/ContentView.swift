@@ -7,6 +7,7 @@ struct ContentView: View {
     @ObservedObject var document: TimelineDocument
     @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
+    @AppStorage("editorWidth") private var editorWidth: Double = 380
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -20,7 +21,15 @@ struct ContentView: View {
             HSplitView {
                 if !isFocusMode {
                     EditorView(config: configBinding)
-                        .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
+                        .frame(minWidth: 330, idealWidth: editorWidth, maxWidth: 520)
+                        .background(
+                            // Remember the divider position across launches
+                            GeometryReader { geo in
+                                Color.clear.onChange(of: geo.size.width) {
+                                    _, width in
+                                    editorWidth = width
+                                }
+                            })
                 }
                 PreviewView(config: document.config)
                     .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
@@ -82,6 +91,7 @@ struct ContentView: View {
 
     private static let includeGeneratedKey = "exportIncludeGenerated"
     private static let pngScaleIndexKey = "exportPNGScaleIndex"
+    private static let pngDarkKey = "exportPNGDark"
 
     private func exportPDF() {
         let defaults = UserDefaults.standard
@@ -126,22 +136,33 @@ struct ContentView: View {
         ])
         resolutionRow.orientation = .horizontal
 
+        let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        appearancePopup.addItems(withTitles: ["Light", "Dark"])
+        appearancePopup.selectItem(at: defaults.bool(forKey: Self.pngDarkKey) ? 1 : 0)
+        let appearanceRow = NSStackView(views: [
+            NSTextField(labelWithString: "Appearance:"), appearancePopup,
+        ])
+        appearanceRow.orientation = .horizontal
+
         let generatedCheckbox = NSButton(
             checkboxWithTitle: "Include generation date", target: nil, action: nil)
         generatedCheckbox.state =
             defaults.bool(forKey: Self.includeGeneratedKey) ? .on : .off
 
-        panel.accessoryView = accessoryStack(views: [resolutionRow, generatedCheckbox])
+        panel.accessoryView = accessoryStack(
+            views: [resolutionRow, appearanceRow, generatedCheckbox])
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let dark = appearancePopup.indexOfSelectedItem == 1
         defaults.set(generatedCheckbox.state == .on, forKey: Self.includeGeneratedKey)
         defaults.set(resolutionPopup.indexOfSelectedItem, forKey: Self.pngScaleIndexKey)
+        defaults.set(dark, forKey: Self.pngDarkKey)
         let scales: [CGFloat] = [1, 2, 4]
         let scale = scales[max(0, min(resolutionPopup.indexOfSelectedItem, 2))]
         do {
             try Exporter.writePNG(
                 for: document.config, to: url, scale: scale,
-                includeGenerated: generatedCheckbox.state == .on)
+                includeGenerated: generatedCheckbox.state == .on, dark: dark)
         } catch {
             presentError(error)
         }

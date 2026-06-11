@@ -3,6 +3,11 @@
 A native Mac app for creating timeline PDFs and images. Edit events in a
 form, watch the timeline render live, and export to PDF or PNG.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/example-dark.png">
+  <img alt="Example timeline" src="docs/example.png">
+</picture>
+
 ## Features
 
 - **Live preview** — the timeline re-renders as you type, with pinch
