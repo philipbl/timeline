@@ -7,15 +7,28 @@ import Foundation
 /// ReportLab uses, so the layout math carries over unchanged.
 struct TimelineRenderer {
 
-    // Bright, playful palette — matches timeline.py
-    static let eventColors: [String] = [
-        "#FF6B6B",  // coral
-        "#3A86FF",  // bright blue
-        "#FF9F1C",  // tangerine
-        "#9B5DE5",  // violet
-        "#00A878",  // jade
-        "#E84A8A",  // pink
+    /// Named palettes, all dark enough to double as label text.
+    static let palettes: [(name: String, colors: [String])] = [
+        (
+            "bright",
+            ["#FF6B6B", "#3A86FF", "#FF9F1C", "#9B5DE5", "#00A878", "#E84A8A"]
+        ),
+        (
+            "muted",
+            ["#C0392B", "#1F618D", "#1E8449", "#B9770E", "#7D3C98", "#148F77"]
+        ),
+        (
+            "jewel",
+            ["#7B1FA2", "#C2185B", "#00838F", "#EF6C00", "#303F9F", "#558B2F"]
+        ),
     ]
+
+    static func palette(named name: String?) -> [String] {
+        palettes.first { $0.name == name }?.colors ?? palettes[0].colors
+    }
+
+    /// Default palette, used as a fallback.
+    static var eventColors: [String] { palettes[0].colors }
 
     /// UI chrome colors; event colors stay the same in both themes.
     struct Theme {
@@ -87,7 +100,7 @@ struct TimelineRenderer {
     let bottomMargin: CGFloat = 54
 
     // Timeline visual constants — keep in sync with timeline.py
-    let dayWidth: CGFloat = 30
+    let dayWidth: CGFloat  // 30 by default; set from days_per_row
     let tickHeight: CGFloat = 12
     let dotRadius: CGFloat = 4.5
     let rangeBaseOffset: CGFloat = 10
@@ -143,6 +156,7 @@ struct TimelineRenderer {
     /// Default palette assignment, exposed so the editor can show each
     /// event's effective color.
     static func resolvedColorHex(for config: TimelineConfig) -> [UUID: String] {
+        let palette = palette(named: config.paletteName)
         let sorted = config.events.sorted { $0.start < $1.start }
         var result: [UUID: String] = [:]
         var paletteIndex = 0
@@ -150,7 +164,7 @@ struct TimelineRenderer {
             if let hex = event.colorHex, !hex.isEmpty {
                 result[event.id] = hex
             } else {
-                result[event.id] = eventColors[paletteIndex % eventColors.count]
+                result[event.id] = palette[paletteIndex % palette.count]
                 paletteIndex += 1
             }
         }
@@ -179,8 +193,16 @@ struct TimelineRenderer {
         self.totalDays = start.days(until: end) + 1
         self.topMargin = baseTopMargin + (config.title.isEmpty ? 0 : 39.6)
 
+        // days_per_row stretches/shrinks day spacing to fill the row;
+        // without it, days get 30pt each
         let usableWidth = Self.pageSize.width - leftMargin - rightMargin
-        self.maxDaysPerRow = max(1, Int(usableWidth / dayWidth))
+        if let daysPerRow = config.daysPerRow, daysPerRow >= 3 {
+            self.maxDaysPerRow = min(daysPerRow, 60)
+            self.dayWidth = usableWidth / CGFloat(min(daysPerRow, 60))
+        } else {
+            self.dayWidth = 30
+            self.maxDaysPerRow = max(1, Int(usableWidth / 30))
+        }
 
         let resolved = Self.resolvedColorHex(for: config)
         self.eventColorMap = resolved.mapValues { Self.cg($0) }
@@ -513,7 +535,7 @@ struct TimelineRenderer {
 
         // Merged bands for consecutive weekend/holiday days
         var i = 0
-        while i < row.numDays {
+        while config.shadeWeekends, i < row.numDays {
             if isWeekendOrHoliday(row.startDay.shifted(days: i)) {
                 var j = i
                 while j + 1 < row.numDays,
@@ -544,7 +566,8 @@ struct TimelineRenderer {
         ctx.strokePath()
         ctx.setLineCap(.butt)
 
-        // Ticks and dates
+        // Ticks and dates; cramped rows label every other day
+        let dateInterval = dayWidth < 20 ? 2 : 1
         ctx.setLineWidth(1)
         for i in 0..<row.numDays {
             let day = row.startDay.shifted(days: i)
@@ -556,11 +579,13 @@ struct TimelineRenderer {
             ctx.addLine(to: CGPoint(x: x, y: y + tickHeight / 2))
             ctx.strokePath()
 
-            Self.drawText(
-                day.shortLabel, at: CGPoint(x: x, y: y - tickHeight / 2 - 12),
-                font: Self.font("Helvetica", 8),
-                color: special ? theme.dateMuted : theme.date,
-                align: .center, in: ctx)
+            if i % dateInterval == 0 {
+                Self.drawText(
+                    day.shortLabel, at: CGPoint(x: x, y: y - tickHeight / 2 - 12),
+                    font: Self.font("Helvetica", 8),
+                    color: special ? theme.dateMuted : theme.date,
+                    align: .center, in: ctx)
+            }
         }
 
         // Holiday names: centered in the band when it holds one holiday

@@ -13,10 +13,10 @@ struct EditorView: View {
         List {
             Section("Timeline") {
                 TextField("Title", text: $config.title, prompt: Text("Untitled"))
-                    .groupedRow(index: 0, count: 3)
+                    .groupedRow(index: 0, count: 6)
 
                 OptionalDayRow(label: "Starts", day: $config.timelineStart, defaultDay: .today())
-                    .groupedRow(index: 1, count: 3)
+                    .groupedRow(index: 1, count: 6)
                 VStack(alignment: .leading, spacing: 6) {
                     OptionalDayRow(
                         label: "Ends", day: $config.timelineEnd,
@@ -27,7 +27,51 @@ struct EditorView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .groupedRow(index: 2, count: 3)
+                .groupedRow(index: 2, count: 6)
+                HStack {
+                    Toggle(
+                        "Days per row",
+                        isOn: Binding(
+                            get: { config.daysPerRow != nil },
+                            set: { config.daysPerRow = $0 ? 22 : nil }))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    if let daysPerRow = config.daysPerRow {
+                        Spacer()
+                        Stepper(
+                            value: Binding(
+                                get: { config.daysPerRow ?? 22 },
+                                set: { config.daysPerRow = $0 }),
+                            in: 5...60
+                        ) {
+                            Text("\(daysPerRow)")
+                                .monospacedDigit()
+                        }
+                    }
+                }
+                .groupedRow(index: 3, count: 6)
+                Toggle("Shade weekends & holidays", isOn: $config.shadeWeekends)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .groupedRow(index: 4, count: 6)
+                Picker(
+                    "Colors",
+                    selection: Binding(
+                        get: { config.paletteName ?? TimelineRenderer.palettes[0].name },
+                        set: { name in
+                            config.paletteName =
+                                name == TimelineRenderer.palettes[0].name ? nil : name
+                        })
+                ) {
+                    ForEach(TimelineRenderer.palettes, id: \.name) { palette in
+                        HStack(spacing: 4) {
+                            Text(palette.name.capitalized)
+                        }
+                        .tag(palette.name)
+                    }
+                }
+                .pickerStyle(.menu)
+                .groupedRow(index: 5, count: 6)
             }
 
             Section {
@@ -242,7 +286,6 @@ struct EventRow: View {
     let onDelete: () -> Void
 
     @State private var showColorPicker = false
-    @State private var isHovering = false
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -275,7 +318,7 @@ struct EventRow: View {
                     .strikethrough(event.done)
                     .focused(nameFocus, equals: event.id)
                 Spacer()
-                if isHovering {
+                if isExpanded {
                     Button(role: .destructive, action: onDelete) {
                         Image(systemName: "trash")
                             .foregroundStyle(.secondary)
@@ -289,7 +332,6 @@ struct EventRow: View {
                         .monospacedDigit()
                 }
             }
-            .onHover { isHovering = $0 }
         }
     }
 
@@ -339,10 +381,10 @@ struct HolidayRow: View {
     @Binding var holiday: CustomHoliday
     let onDelete: () -> Void
 
-    @State private var isHovering = false
+    @State private var isExpanded = false
 
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $isExpanded) {
             DayPicker(label: "Start", day: $holiday.start)
 
             Toggle(
@@ -365,7 +407,7 @@ struct HolidayRow: View {
                     .labelsHidden()
                     .textFieldStyle(.plain)
                 Spacer()
-                if isHovering {
+                if isExpanded {
                     Button(role: .destructive, action: onDelete) {
                         Image(systemName: "trash")
                             .foregroundStyle(.secondary)
@@ -383,7 +425,6 @@ struct HolidayRow: View {
                     .monospacedDigit()
                 }
             }
-            .onHover { isHovering = $0 }
         }
     }
 }

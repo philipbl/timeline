@@ -105,6 +105,12 @@ struct TimelineConfig: Equatable {
     var title: String = ""
     var timelineStart: Day?
     var timelineEnd: Day?
+    /// Days per timeline row; nil sizes rows automatically (~30pt/day).
+    var daysPerRow: Int?
+    /// Gray bands behind weekends and holidays.
+    var shadeWeekends: Bool = true
+    /// Named color palette; nil uses the default ("bright").
+    var paletteName: String?
     var events: [TimelineEvent] = []
     var customHolidays: [CustomHoliday] = []
 
