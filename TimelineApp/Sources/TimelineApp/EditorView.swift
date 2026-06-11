@@ -27,23 +27,7 @@ struct EditorView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .groupedRow(index: 2, count: 5)
-                Picker(
-                    "Colors",
-                    selection: Binding(
-                        get: { config.paletteName ?? TimelineRenderer.palettes[0].name },
-                        set: { name in
-                            config.paletteName =
-                                name == TimelineRenderer.palettes[0].name ? nil : name
-                        })
-                ) {
-                    ForEach(TimelineRenderer.palettes, id: \.name) { palette in
-                        Text(palette.name.capitalized)
-                            .tag(palette.name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .groupedRow(index: 3, count: 5)
+                .groupedRow(index: 2, count: 4)
                 DisclosureGroup("Advanced") {
                     HStack {
                         Text("Days per row")
@@ -63,8 +47,24 @@ struct EditorView: View {
                     Toggle("Shade weekends & holidays", isOn: $config.shadeWeekends)
                         .toggleStyle(.switch)
                         .controlSize(.small)
+
+                    Picker(
+                        "Colors",
+                        selection: Binding(
+                            get: { config.paletteName ?? TimelineRenderer.palettes[0].name },
+                            set: { name in
+                                config.paletteName =
+                                    name == TimelineRenderer.palettes[0].name ? nil : name
+                            })
+                    ) {
+                        ForEach(TimelineRenderer.palettes, id: \.name) { palette in
+                            Text(palette.name.capitalized)
+                                .tag(palette.name)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
-                .groupedRow(index: 4, count: 5)
+                .groupedRow(index: 3, count: 4)
             }
 
             Section {

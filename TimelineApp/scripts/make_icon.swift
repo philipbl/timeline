@@ -109,17 +109,6 @@ drawLeader(x: blueX, from: timelineY, to: 700, color: 0x1E7CF0)  // blue, up
 drawLeader(x: orangeX, from: 330, to: timelineY, color: 0xE8920A)  // orange, down
 drawLeader(x: purpleX, from: 330, to: timelineY, color: 0x8E4BD6)  // purple, down
 
-// Ticks crossing the timeline
-ctx.setStrokeColor(srgb(gray, alpha: 0.85))
-ctx.setLineWidth(13)
-ctx.setLineCap(.round)
-for i in 0..<8 {
-    let x = 226 + CGFloat(i) * 81.7
-    ctx.move(to: CGPoint(x: x, y: timelineY - 64))
-    ctx.addLine(to: CGPoint(x: x, y: timelineY + 64))
-    ctx.strokePath()
-}
-
 // Main timeline bar
 ctx.setStrokeColor(srgb(gray))
 ctx.setLineWidth(22)
