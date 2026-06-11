@@ -383,6 +383,80 @@ enum SelfTests {
                                 y: row.baselineY)) == nil)
         }
 
+        // MCP server
+        test("mcpInitializeAndToolsList") {
+            let initResponse = MCPServer.handle([
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": ["protocolVersion": "2024-11-05"],
+            ])
+            let initResult = initResponse?["result"] as? [String: Any]
+            expect(initResult?["protocolVersion"] as? String == "2024-11-05")
+
+            let listResponse = MCPServer.handle([
+                "jsonrpc": "2.0", "id": 2, "method": "tools/list",
+            ])
+            let tools =
+                (listResponse?["result"] as? [String: Any])?["tools"]
+                as? [[String: Any]]
+            expect((tools?.count ?? 0) == 8)
+
+            // Notifications get no response
+            expect(
+                MCPServer.handle([
+                    "jsonrpc": "2.0", "method": "notifications/initialized",
+                ]) == nil)
+        }
+        test("mcpCreateAddUpdateRenderFlow") {
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("mcp-test-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(
+                at: dir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let file = dir.appendingPathComponent("t.timeline").path
+
+            _ = try MCPServer.callTool(
+                "create_timeline",
+                ["path": file, "title": "MCP", "timeline_start": "2026-06-08"])
+            _ = try MCPServer.callTool(
+                "add_events",
+                [
+                    "path": file,
+                    "events": [
+                        ["name": "Dot", "start": "2026-06-15"],
+                        ["name": "Bar", "start": "2026-06-10", "end": "2026-06-12"],
+                    ],
+                ])
+            _ = try MCPServer.callTool(
+                "update_event",
+                ["path": file, "name": "Dot", "important": true, "start": "2026-06-16"])
+
+            let parsed = try ConfigYAML.parse(
+                try String(contentsOfFile: file, encoding: .utf8))
+            expect(parsed.title == "MCP")
+            expect(parsed.events.map(\.name) == ["Bar", "Dot"])  // sorted
+            expect(parsed.events[1].important)
+            expect(parsed.events[1].start == day("2026-06-16"))
+
+            _ = try MCPServer.callTool("remove_event", ["path": file, "name": "Bar"])
+            let afterRemove = try ConfigYAML.parse(
+                try String(contentsOfFile: file, encoding: .utf8))
+            expect(afterRemove.events.count == 1)
+
+            // Render returns inline image content
+            let pngPath = dir.appendingPathComponent("out.png").path
+            let render = try MCPServer.callTool(
+                "render_timeline", ["path": file, "output_path": pngPath])
+            let contents = render["content"] as? [[String: Any]]
+            expect(contents?.contains { $0["type"] as? String == "image" } == true)
+            expect(FileManager.default.fileExists(atPath: pngPath))
+
+            // Duplicate create fails
+            do {
+                _ = try MCPServer.callTool("create_timeline", ["path": file])
+                expect(false, "expected duplicate create to throw")
+            } catch {}
+        }
+
         // Exports
         test("pdfExportProducesValidData") {
             let config = makeConfig(

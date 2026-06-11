@@ -6,6 +6,12 @@ import SwiftUI
 enum Main {
     static func main() {
         let args = CommandLine.arguments
+
+        // MCP server over stdio, so Claude can manage timeline documents
+        if args.contains("--mcp") {
+            MCPServer.run()
+        }
+
         if args.contains("--self-test") {
             #if DEBUG
             exit(SelfTests.run())

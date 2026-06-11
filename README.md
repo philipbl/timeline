@@ -87,6 +87,25 @@ events:
 
 See [example.timeline](example.timeline) for a fuller example.
 
+## MCP server
+
+The binary doubles as an MCP server, so Claude can create timelines,
+manage events, and render previews (PNG renders are returned inline so
+the model can see the result):
+
+```bash
+claude mcp add -s user timeline -- \
+  /path/to/build/Timeline.app/Contents/MacOS/Timeline --mcp
+```
+
+Tools: `create_timeline`, `read_timeline`, `add_events`,
+`update_event`, `remove_event`, `add_holiday`, `set_timeline_options`,
+`render_timeline`.
+
+Note: if a document is open in the app while Claude edits the file, the
+app won't reload it automatically — close and reopen, or let Claude
+work on files you don't have open.
+
 ## Headless rendering
 
 The app binary doubles as a CLI for scripting and CI:
