@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "timeline": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/timeline-mcp.sh",
+      "args": []
+    }
+  }
+}

@@ -450,6 +450,13 @@ enum SelfTests {
             expect(contents?.contains { $0["type"] as? String == "image" } == true)
             expect(FileManager.default.fileExists(atPath: pngPath))
 
+            // PDF render works too
+            let pdfPath = dir.appendingPathComponent("out.pdf").path
+            _ = try MCPServer.callTool(
+                "render_timeline", ["path": file, "output_path": pdfPath])
+            let pdfData = FileManager.default.contents(atPath: pdfPath)
+            expect(pdfData?.prefix(4) == Data("%PDF".utf8))
+
             // Duplicate create fails
             do {
                 _ = try MCPServer.callTool("create_timeline", ["path": file])

@@ -87,20 +87,29 @@ events:
 
 See [example.timeline](example.timeline) for a fuller example.
 
-## MCP server
+## Claude plugin
 
-The binary doubles as an MCP server, so Claude can create timelines,
-manage events, and render previews (PNG renders are returned inline so
-the model can see the result):
+The repo is a Claude Code plugin: an MCP server for managing and
+rendering timelines (PNG renders come back inline so the model can see
+the result, PDF for print output) plus a skill that teaches Claude the
+workflow.
+
+```bash
+claude plugin marketplace add philipbl/timeline   # or a local path
+claude plugin install timeline@timeline
+```
+
+The server binary builds itself on first connection (needs Swift).
+Tools: `create_timeline`, `read_timeline`, `add_events`,
+`update_event`, `remove_event`, `add_holiday`, `set_timeline_options`,
+`render_timeline`.
+
+Manual registration without the plugin:
 
 ```bash
 claude mcp add -s user timeline -- \
   /path/to/build/Timeline.app/Contents/MacOS/Timeline --mcp
 ```
-
-Tools: `create_timeline`, `read_timeline`, `add_events`,
-`update_event`, `remove_event`, `add_holiday`, `set_timeline_options`,
-`render_timeline`.
 
 Note: if a document is open in the app while Claude edits the file, the
 app won't reload it automatically — close and reopen, or let Claude

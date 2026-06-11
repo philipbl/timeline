@@ -1,0 +1,14 @@
+{
+  "name": "timeline",
+  "description": "Visual timeline documents: create, edit, and render schedules as PNG or PDF.",
+  "owner": {
+    "name": "Philip Lundrigan"
+  },
+  "plugins": [
+    {
+      "name": "timeline",
+      "source": "./",
+      "description": "Create, edit, and render visual timeline documents with PNG and PDF output."
+    }
+  ]
+}

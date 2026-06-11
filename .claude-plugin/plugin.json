@@ -1,0 +1,8 @@
+{
+  "name": "timeline",
+  "version": "1.0.0",
+  "description": "Create, edit, and render visual timeline documents (.timeline) — events, holidays, palettes — with PNG and PDF output. Pairs with the native Timeline Mac app.",
+  "author": {
+    "name": "Philip Lundrigan"
+  }
+}
