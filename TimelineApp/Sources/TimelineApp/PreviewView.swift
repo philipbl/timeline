@@ -13,13 +13,20 @@ struct PreviewView: View {
     var body: some View {
         let dark = colorScheme == .dark
         let theme: TimelineRenderer.Theme = dark ? .dark : .light
-        let background = TimelineRenderer.cg(dark ? "#1B1B20" : "#FFFFFF")
+        // Page fill and view backdrop share one color so the canvas looks
+        // uniform with no visible page edges
+        let canvasHex = dark ? "#1B1B20" : "#FAFAFC"
         let data =
             (try? Exporter.continuousPDFData(
-                for: config, theme: theme, background: background)) ?? Data()
+                for: config, theme: theme,
+                background: TimelineRenderer.cg(canvasHex))) ?? Data()
 
-        PDFCanvasView(data: data, proxy: proxy)
+        PDFCanvasView(data: data, background: nsColor(canvasHex), proxy: proxy)
             .overlay(alignment: .bottomTrailing) { zoomControls }
+    }
+
+    private func nsColor(_ hex: String) -> NSColor {
+        NSColor(cgColor: TimelineRenderer.cg(hex)) ?? .windowBackgroundColor
     }
 
     private var zoomControls: some View {
@@ -60,6 +67,7 @@ final class PDFViewProxy: ObservableObject {
 
 struct PDFCanvasView: NSViewRepresentable {
     let data: Data
+    let background: NSColor
     let proxy: PDFViewProxy
 
     final class Coordinator {
@@ -76,13 +84,14 @@ struct PDFCanvasView: NSViewRepresentable {
         view.autoScales = true
         view.minScaleFactor = 0.1
         view.maxScaleFactor = 12
-        view.backgroundColor = .underPageBackgroundColor
+        view.backgroundColor = background
         proxy.view = view
         return view
     }
 
     func updateNSView(_ view: PDFView, context: Context) {
         proxy.view = view
+        view.backgroundColor = background
         guard context.coordinator.lastData != data else { return }
         let isFirstDocument = context.coordinator.lastData == nil
         context.coordinator.lastData = data

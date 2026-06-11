@@ -8,20 +8,26 @@ struct EditorView: View {
     var body: some View {
         let resolvedColors = TimelineRenderer.resolvedColorHex(for: config)
 
-        // List (not Form) so .swipeActions works on the rows
+        // List (not Form) so .swipeActions works on the rows; grouped-form
+        // look recreated with row backgrounds
         List {
             Section("Timeline") {
                 TextField("Title", text: $config.title, prompt: Text("Untitled"))
+                    .groupedRow(index: 0, count: 3)
 
                 OptionalDayRow(label: "Starts", day: $config.timelineStart, defaultDay: .today())
-                OptionalDayRow(
-                    label: "Ends", day: $config.timelineEnd,
-                    defaultDay: Day.today().shifted(days: 14))
-                if config.timelineEnd == nil {
-                    Text("Without an end date, the timeline runs to the last event.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .groupedRow(index: 1, count: 3)
+                VStack(alignment: .leading, spacing: 6) {
+                    OptionalDayRow(
+                        label: "Ends", day: $config.timelineEnd,
+                        defaultDay: Day.today().shifted(days: 14))
+                    if config.timelineEnd == nil {
+                        Text("Without an end date, the timeline runs to the last event.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .groupedRow(index: 2, count: 3)
             }
 
             Section {
@@ -34,6 +40,9 @@ struct EditorView: View {
                         nameFocus: $focusedEventName,
                         onDelete: { deleteEvent(event.id) }
                     )
+                    .groupedRow(
+                        index: config.events.firstIndex { $0.id == event.id } ?? 0,
+                        count: config.events.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             deleteEvent(event.id)
@@ -66,6 +75,10 @@ struct EditorView: View {
                     HolidayRow(holiday: $holiday) {
                         config.customHolidays.removeAll { $0.id == holiday.id }
                     }
+                    .groupedRow(
+                        index: config.customHolidays.firstIndex { $0.id == holiday.id }
+                            ?? 0,
+                        count: config.customHolidays.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             config.customHolidays.removeAll { $0.id == holiday.id }
@@ -93,6 +106,8 @@ struct EditorView: View {
             }
         }
         .listStyle(.inset)
+        .listRowSeparator(.hidden)
+        .environment(\.defaultMinListRowHeight, 40)
         .onAppear(perform: sortEvents)
         .onChange(of: config.events.map(\.start)) {
             sortEvents()
@@ -146,6 +161,36 @@ struct EditorView: View {
     }
 }
 
+/// Grouped-form row styling for List rows: shared rounded box per
+/// section (rounded top on the first row, bottom on the last), with the
+/// roomier insets of .formStyle(.grouped).
+struct GroupedRow: ViewModifier {
+    let index: Int
+    let count: Int
+
+    func body(content: Content) -> some View {
+        let top: CGFloat = index == 0 ? 8 : 0
+        let bottom: CGFloat = index == max(count - 1, 0) ? 8 : 0
+        content
+            .padding(.vertical, 2)
+            .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+            .listRowSeparator(.hidden)
+            .listRowBackground(
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(
+                        topLeading: top, bottomLeading: bottom,
+                        bottomTrailing: bottom, topTrailing: top))
+                    .fill(Color.primary.opacity(0.055))
+                    .padding(.horizontal, 4))
+    }
+}
+
+extension View {
+    func groupedRow(index: Int, count: Int) -> some View {
+        modifier(GroupedRow(index: index, count: count))
+    }
+}
+
 /// DatePicker bound to a Day.
 struct DayPicker: View {
     let label: String
@@ -174,6 +219,8 @@ struct OptionalDayRow: View {
                 isOn: Binding(
                     get: { day != nil },
                     set: { day = $0 ? defaultDay : nil }))
+            .toggleStyle(.switch)
+            .controlSize(.small)
             if day != nil {
                 DatePicker(
                     "",
@@ -205,6 +252,8 @@ struct EventRow: View {
                 isOn: Binding(
                     get: { event.end != nil },
                     set: { event.end = $0 ? event.start.shifted(days: 1) : nil }))
+            .toggleStyle(.switch)
+            .controlSize(.small)
             if event.end != nil {
                 DayPicker(
                     label: "End",
@@ -214,6 +263,8 @@ struct EventRow: View {
             }
 
             Toggle("Done", isOn: $event.done)
+                .toggleStyle(.switch)
+                .controlSize(.small)
 
             Button(role: .destructive, action: onDelete) {
                 Label("Delete Event", systemImage: "trash")
@@ -290,6 +341,8 @@ struct HolidayRow: View {
                 isOn: Binding(
                     get: { holiday.end != nil },
                     set: { holiday.end = $0 ? holiday.start.shifted(days: 1) : nil }))
+            .toggleStyle(.switch)
+            .controlSize(.small)
             if holiday.end != nil {
                 DayPicker(
                     label: "End",
