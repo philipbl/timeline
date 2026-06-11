@@ -7,30 +7,31 @@ struct ContentView: View {
     @State private var isFocusMode = false
 
     var body: some View {
-        HSplitView {
-            if !isFocusMode {
-                EditorView(config: $document.config)
-                    .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
-            }
-            PreviewView(config: document.config)
-                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    if isFocusMode {
-                        Button {
-                            isFocusMode = false
-                        } label: {
-                            Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        }
-                        .buttonStyle(.borderless)
-                        .padding(8)
-                        .background(.regularMaterial, in: Circle())
-                        .padding(12)
-                        .help("Show the sidebar and toolbar (⇧⌘F)")
-                    }
+        ZStack(alignment: .topTrailing) {
+            HSplitView {
+                if !isFocusMode {
+                    EditorView(config: $document.config)
+                        .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
                 }
+                PreviewView(config: document.config)
+                    .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            // Exit button pinned to the true top-right corner of the
+            // window (the ZStack ignores the hidden title bar's safe area)
+            if isFocusMode {
+                Button {
+                    isFocusMode = false
+                } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                }
+                .buttonStyle(.borderless)
+                .padding(8)
+                .background(.regularMaterial, in: Circle())
+                .padding(12)
+                .help("Show the sidebar and toolbar (⇧⌘F)")
+            }
         }
-        // In focus mode the canvas extends under the (hidden) title bar,
-        // so the exit button sits at the true top of the window
         .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
         // The shortcut lives on one always-present hidden button; putting
