@@ -203,7 +203,11 @@ struct TimelineRenderer {
         self.includeGenerated = includeGenerated
         self.showToday = showToday
 
-        let start = config.timelineStart ?? .today()
+        // Without explicit bounds the timeline runs from the first event
+        // to the last; past-only documents would otherwise collapse to a
+        // single day starting today
+        let start =
+            config.timelineStart ?? config.events.map(\.start).min() ?? .today()
         var end = config.timelineEnd ?? start
         if config.timelineEnd == nil {
             for event in config.events {

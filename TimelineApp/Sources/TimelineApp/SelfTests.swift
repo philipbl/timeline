@@ -162,6 +162,14 @@ enum SelfTests {
             expect(continuous.pageCount == 1)
             expect(continuous.canvasSize.height > TimelineRenderer.pageSize.height)
         }
+        test("startDateInferredFromEarliestEvent") {
+            var config = makeConfig(
+                events: [point("B", "2025-12-01"), point("A", "2025-11-20")])
+            config.timelineStart = nil
+            let renderer = TimelineRenderer(config: config)
+            expect(renderer.startDay == day("2025-11-20"))
+            expect(renderer.endDay == day("2025-12-01"))
+        }
         test("endDateInferredFromLatestEvent") {
             let config = makeConfig(
                 events: [point("A", "2026-06-10"), span("B", "2026-06-12", "2026-07-02")])
