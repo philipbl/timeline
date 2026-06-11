@@ -7,7 +7,6 @@ struct ContentView: View {
     @ObservedObject var document: TimelineDocument
     @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
-    @AppStorage("editorWidth") private var editorWidth: Double = 380
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -18,21 +17,10 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            HSplitView {
-                if !isFocusMode {
-                    EditorView(config: configBinding)
-                        .frame(minWidth: 330, idealWidth: editorWidth, maxWidth: 520)
-                        .background(
-                            // Remember the divider position across launches
-                            GeometryReader { geo in
-                                Color.clear.onChange(of: geo.size.width) {
-                                    _, width in
-                                    editorWidth = width
-                                }
-                            })
-                }
+            PersistentSplitView(sidebarCollapsed: isFocusMode) {
+                EditorView(config: configBinding)
+            } detail: {
                 PreviewView(config: document.config)
-                    .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
             }
 
             // Exit button pinned to the true top-right corner of the
