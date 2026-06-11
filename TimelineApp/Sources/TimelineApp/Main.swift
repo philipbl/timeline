@@ -62,7 +62,17 @@ enum Main {
     }
 }
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            DeepLink.handle(url)
+        }
+    }
+}
+
 struct TimelineAppMain: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         DocumentGroup(newDocument: { TimelineDocument() }) { file in
             ContentView(document: file.document, fileURL: file.fileURL)

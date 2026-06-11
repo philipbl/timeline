@@ -117,6 +117,20 @@ Note: if a document is open in the app while Claude edits the file, the
 app won't reload it automatically — close and reopen, or let Claude
 work on files you don't have open.
 
+## URL scheme
+
+`timeline://` links work from Shortcuts, scripts, or other apps:
+
+```
+timeline://add-event?file=~/plan.timeline&name=Dentist&start=2026-06-15
+timeline://add-event?file=~/plan.timeline&name=Trip&start=today&end=2026-06-20&important=true
+timeline://open?file=~/plan.timeline
+```
+
+`add-event` accepts `name`, `start` (required; `YYYY-MM-DD` or `today`),
+plus optional `end`, `done`, `important`, and `color`. If the document
+is open, the window updates live; otherwise it opens.
+
 ## Headless rendering
 
 The app binary doubles as a CLI for scripting and CI:
