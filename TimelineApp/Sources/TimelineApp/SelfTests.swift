@@ -170,6 +170,14 @@ enum SelfTests {
             expect(renderer.startDay == day("2025-11-20"))
             expect(renderer.endDay == day("2025-12-01"))
         }
+        test("pastDayMarksOnlyWithExplicitBounds") {
+            var config = makeConfig(events: [point("A", "2025-11-20")])
+            expect(TimelineRenderer(config: config).marksPastDays)  // has start
+            config.timelineStart = nil
+            expect(!TimelineRenderer(config: config).marksPastDays)
+            config.timelineEnd = day("2025-12-31")
+            expect(TimelineRenderer(config: config).marksPastDays)
+        }
         test("endDateInferredFromLatestEvent") {
             let config = makeConfig(
                 events: [point("A", "2026-06-10"), span("B", "2026-06-12", "2026-07-02")])

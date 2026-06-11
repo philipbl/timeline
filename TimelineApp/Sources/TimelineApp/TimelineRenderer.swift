@@ -720,7 +720,15 @@ struct TimelineRenderer {
         }
     }
 
+    /// X marks only make sense on an actively tracked timeline. A
+    /// document without explicit bounds is historical/freeform — don't
+    /// cross off its days.
+    var marksPastDays: Bool {
+        config.timelineStart != nil || config.timelineEnd != nil
+    }
+
     private func drawPastDayMarkers(_ row: Row, in ctx: CGContext) {
+        guard marksPastDays else { return }
         let today = Day.today()
         ctx.setStrokeColor(theme.pastX)
         ctx.setLineWidth(1.3)
