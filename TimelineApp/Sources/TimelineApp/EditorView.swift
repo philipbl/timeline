@@ -55,18 +55,40 @@ struct EditorView: View {
                     Picker(
                         "Colors",
                         selection: Binding(
-                            get: { config.paletteName ?? TimelineRenderer.palettes[0].name },
+                            get: {
+                                config.customPalette != nil
+                                    ? "custom"
+                                    : config.paletteName
+                                        ?? TimelineRenderer.palettes[0].name
+                            },
                             set: { name in
-                                config.paletteName =
-                                    name == TimelineRenderer.palettes[0].name ? nil : name
+                                if name == "custom" {
+                                    // Seed with the currently active palette
+                                    config.customPalette =
+                                        TimelineRenderer.effectivePalette(for: config)
+                                } else {
+                                    config.customPalette = nil
+                                    config.paletteName =
+                                        name == TimelineRenderer.palettes[0].name
+                                        ? nil : name
+                                }
                             })
                     ) {
                         ForEach(TimelineRenderer.palettes, id: \.name) { palette in
                             Text(palette.name.capitalized)
                                 .tag(palette.name)
                         }
+                        Divider()
+                        Text("Custom").tag("custom")
                     }
                     .pickerStyle(.menu)
+
+                    if config.customPalette != nil {
+                        CustomPaletteEditor(
+                            colors: Binding(
+                                get: { config.customPalette ?? [] },
+                                set: { config.customPalette = $0 }))
+                    }
                 }
                 .groupedRow(index: 3, count: 4)
             }
@@ -202,6 +224,45 @@ struct EditorView: View {
     }
 }
 
+/// Row of color wells for a user-defined palette, with add/remove.
+struct CustomPaletteEditor: View {
+    @Binding var colors: [String]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(colors.indices, id: \.self) { index in
+                ColorPicker(
+                    "Color \(index + 1)",
+                    selection: Binding(
+                        get: { Color(hex: colors[index]) },
+                        set: { colors[index] = $0.hexString }),
+                    supportsOpacity: false)
+                .labelsHidden()
+            }
+
+            Spacer()
+
+            Button {
+                colors.append(colors.last ?? "#FF6B6B")
+            } label: {
+                Image(systemName: "plus.circle")
+            }
+            .buttonStyle(.borderless)
+            .disabled(colors.count >= 10)
+            .help("Add a color")
+
+            Button {
+                if colors.count > 2 { colors.removeLast() }
+            } label: {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .disabled(colors.count <= 2)
+            .help("Remove the last color")
+        }
+    }
+}
+
 /// Grouped-form row styling for List rows: shared rounded box per
 /// section (rounded top on the first row, bottom on the last), with the
 /// roomier insets of .formStyle(.grouped).
@@ -306,6 +367,10 @@ struct EventRow: View {
             Toggle("Done", isOn: $event.done)
                 .toggleStyle(.switch)
                 .controlSize(.small)
+
+            Toggle("Important", isOn: $event.important)
+                .toggleStyle(.switch)
+                .controlSize(.small)
         } label: {
             HStack {
                 colorDot
@@ -313,6 +378,7 @@ struct EventRow: View {
                     .labelsHidden()
                     .textFieldStyle(.plain)
                     .strikethrough(event.done)
+                    .fontWeight(event.important ? .semibold : .regular)
                     .focused(nameFocus, equals: event.id)
                 Spacer()
                 if isExpanded {

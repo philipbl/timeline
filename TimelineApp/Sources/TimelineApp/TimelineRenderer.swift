@@ -21,10 +21,28 @@ struct TimelineRenderer {
             "jewel",
             ["#7B1FA2", "#C2185B", "#00838F", "#EF6C00", "#303F9F", "#558B2F"]
         ),
+        (
+            "ocean",
+            ["#0277BD", "#00838F", "#3949AB", "#00695C", "#5E35B1", "#456990"]
+        ),
+        (
+            "sunset",
+            ["#E53935", "#FB8C00", "#C2185B", "#F4511E", "#8E24AA", "#D81B60"]
+        ),
+        (
+            "forest",
+            ["#2E7D32", "#827717", "#00695C", "#558B2F", "#37474F", "#6D4C41"]
+        ),
     ]
 
     static func palette(named name: String?) -> [String] {
         palettes.first { $0.name == name }?.colors ?? palettes[0].colors
+    }
+
+    /// Custom palette from the document wins over a named one.
+    static func effectivePalette(for config: TimelineConfig) -> [String] {
+        if let custom = config.customPalette, !custom.isEmpty { return custom }
+        return palette(named: config.paletteName)
     }
 
     /// Default palette, used as a fallback.
@@ -156,7 +174,7 @@ struct TimelineRenderer {
     /// Default palette assignment, exposed so the editor can show each
     /// event's effective color.
     static func resolvedColorHex(for config: TimelineConfig) -> [UUID: String] {
-        let palette = palette(named: config.paletteName)
+        let palette = effectivePalette(for: config)
         let sorted = config.events.sorted { $0.start < $1.start }
         var result: [UUID: String] = [:]
         var paletteIndex = 0
@@ -744,6 +762,20 @@ struct TimelineRenderer {
             Self.drawText(
                 p.event.name, at: CGPoint(x: labelX, y: labelYAbs),
                 font: labelFont, color: eventColor, align: .left, in: ctx)
+
+            // Important events get a box around the label
+            if p.event.important {
+                let box = CGRect(
+                    x: labelX - 4, y: labelYAbs - 3.5,
+                    width: p.textWidth + 8, height: labelTextHeight + 1.5)
+                ctx.setStrokeColor(eventColor)
+                ctx.setLineWidth(1.2)
+                ctx.addPath(
+                    CGPath(
+                        roundedRect: box, cornerWidth: 3.5, cornerHeight: 3.5,
+                        transform: nil))
+                ctx.strokePath()
+            }
 
             if p.event.done {
                 ctx.setStrokeColor(theme.done)

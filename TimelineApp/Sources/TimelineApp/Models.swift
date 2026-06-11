@@ -85,6 +85,8 @@ struct TimelineEvent: Identifiable, Equatable {
     var start: Day = .today()
     var end: Day?
     var done: Bool = false
+    /// Important events get a box around their label.
+    var important: Bool = false
     /// Explicit color override ("#RRGGBB"); nil means palette-assigned.
     var colorHex: String?
 
@@ -113,6 +115,8 @@ struct TimelineConfig: Equatable {
     var shadeHolidays: Bool = true
     /// Named color palette; nil uses the default ("bright").
     var paletteName: String?
+    /// User-defined palette ("#RRGGBB" list); overrides paletteName.
+    var customPalette: [String]?
     var events: [TimelineEvent] = []
     var customHolidays: [CustomHoliday] = []
 

@@ -30,6 +30,9 @@ struct ContentView: View {
                     }
                 }
         }
+        // In focus mode the canvas extends under the (hidden) title bar,
+        // so the exit button sits at the true top of the window
+        .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

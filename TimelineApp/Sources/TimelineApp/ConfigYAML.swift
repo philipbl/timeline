@@ -34,7 +34,13 @@ enum ConfigYAML {
         config.daysPerRow = root["days_per_row"] as? Int
         config.shadeWeekends = root["shade_weekends"] as? Bool ?? true
         config.shadeHolidays = root["shade_holidays"] as? Bool ?? true
-        config.paletteName = root["palette"] as? String
+        // palette is either a built-in name or a list of hex colors
+        if let name = root["palette"] as? String {
+            config.paletteName = name
+        } else if let list = root["palette"] as? [Any] {
+            let colors = list.compactMap { $0 as? String }
+            if !colors.isEmpty { config.customPalette = colors }
+        }
 
         for item in root["custom_holidays"] as? [Any] ?? [] {
             if let dict = item as? [String: Any] {
@@ -61,6 +67,7 @@ enum ConfigYAML {
             event.start = try parseDay(startValue)
             event.end = try dict["end"].map(parseDay)
             event.done = dict["done"] as? Bool ?? false
+            event.important = dict["important"] as? Bool ?? false
             event.colorHex = dict["color"] as? String
             config.events.append(event)
         }
@@ -104,12 +111,16 @@ enum ConfigYAML {
         if !config.shadeHolidays {
             lines.append("shade_holidays: false")
         }
-        if let palette = config.paletteName {
+        if let custom = config.customPalette, !custom.isEmpty {
+            let colors = custom.map { "\"\($0)\"" }.joined(separator: ", ")
+            lines.append("palette: [\(colors)]")
+        } else if let palette = config.paletteName {
             lines.append("palette: \"\(palette)\"")
         }
         if config.timelineStart != nil || config.timelineEnd != nil
             || config.daysPerRow != nil || !config.shadeWeekends
-            || !config.shadeHolidays || config.paletteName != nil {
+            || !config.shadeHolidays || config.paletteName != nil
+            || config.customPalette != nil {
             lines.append("")
         }
 
@@ -136,6 +147,9 @@ enum ConfigYAML {
             }
             if event.done {
                 lines.append("    done: true")
+            }
+            if event.important {
+                lines.append("    important: true")
             }
             if let color = event.colorHex {
                 lines.append("    color: \"\(color)\"")

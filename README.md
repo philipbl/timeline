@@ -43,7 +43,9 @@ timeline_end: "2026-07-20"     # optional; defaults to the last event
 days_per_row: 22               # optional; days per timeline row
 shade_weekends: true           # optional; default true
 shade_holidays: true           # optional; default true
-palette: "bright"              # optional; bright | muted | jewel
+palette: "bright"              # optional; bright | muted | jewel | ocean |
+                               #   sunset | forest, or a custom color list:
+                               #   palette: ["#D62828", "#003049", "#588157"]
 
 custom_holidays:
   - start: "2026-07-08"
@@ -56,6 +58,9 @@ events:
   - name: "Family Visiting"
     start: "2026-07-01"
     end: "2026-07-07"
+  - name: "Big Deadline"
+    start: "2026-06-18"
+    important: true            # boxed label
   - name: "Finished Task"
     start: "2026-06-09"
     done: true
