@@ -209,7 +209,7 @@ struct PreviewView: View {
         }
         .buttonStyle(.borderless)
         .padding(6)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .glassChrome(in: RoundedRectangle(cornerRadius: 8))
         .padding(12)
     }
 

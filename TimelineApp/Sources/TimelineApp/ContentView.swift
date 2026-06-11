@@ -41,7 +41,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderless)
                 .padding(8)
-                .background(.regularMaterial, in: Circle())
+                .glassChrome(in: Circle())
                 .padding(12)
                 .help("Show the sidebar and toolbar (⇧⌘F)")
             }
