@@ -203,8 +203,25 @@ struct ContentView: View {
               let text = try? String(contentsOf: fileURL, encoding: .utf8),
               let parsed = try? ConfigYAML.parse(text)
         else { return }
+        // Tell the document system we're in sync with disk; otherwise the
+        // next save sees a newer mtime and shows the "changed by another
+        // application" conflict sheet for a change we already absorbed
+        syncModificationDate(fileURL)
         if text == ConfigYAML.serialize(document.config) { return }
         document.update(parsed, undoManager: undoManager)
+    }
+
+    /// Update the backing NSDocument's recorded file modification date to
+    /// match disk. DocumentGroup is NSDocument-backed on macOS, and that
+    /// recorded date is what save-time conflict detection compares.
+    private func syncModificationDate(_ url: URL) {
+        guard let nsDocument = NSDocumentController.shared.documents.first(
+            where: { $0.fileURL?.standardizedFileURL == url.standardizedFileURL })
+        else { return }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        if let modified = attributes?[.modificationDate] as? Date {
+            nsDocument.fileModificationDate = modified
+        }
     }
 
     /// Print the paged (paper) layout through the system print dialog.
