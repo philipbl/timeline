@@ -10,6 +10,18 @@ title: "Project Timeline - Q4 2025"
 # timeline_start: "2025-11-01"
 # timeline_end: "2025-12-31"
 
+# Optional: How many days fit in one timeline row (day spacing stretches to fill)
+# days_per_row: 22
+
+# Optional: Gray bands behind weekends and holidays (default: true)
+# shade_weekends: false
+# shade_holidays: false
+
+# Optional: Color palette - bright (default), muted, jewel, ocean, sunset,
+# or forest; or define your own as a list of hex colors
+# palette: "muted"
+# palette: ["#D62828", "#003049", "#588157"]
+
 # Optional: Specify custom holidays in addition to US federal holidays
 # Supports both single dates (YYYY-MM-DD) and date ranges (start/end),
 # with an optional name printed under the dates

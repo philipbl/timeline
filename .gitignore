@@ -2,5 +2,5 @@
 __pycache__/
 timeline.png
 timeline.pdf
-
-events.yaml
+TimelineApp/.build/
+build/
