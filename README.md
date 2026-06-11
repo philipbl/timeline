@@ -22,7 +22,19 @@ form, watch the timeline render live, and export to PDF or PNG.
 - **Export** — paged PDF (US letter, landscape) or single PNG at up to
   288 dpi
 
-## Building
+## Installing
+
+Grab **Timeline.zip** from the latest GitHub release, unzip, and drag
+Timeline.app to Applications. Builds are ad-hoc signed: right-click →
+Open on first launch.
+
+Releases are cut by pushing a version tag:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+## Building from source
 
 Requires Xcode command line tools (Swift 6).
 

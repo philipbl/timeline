@@ -22,7 +22,6 @@ struct ContentView: View {
                             Image(systemName: "arrow.down.right.and.arrow.up.left")
                         }
                         .buttonStyle(.borderless)
-                        .keyboardShortcut("f", modifiers: [.command, .shift])
                         .padding(8)
                         .background(.regularMaterial, in: Circle())
                         .padding(12)
@@ -34,6 +33,14 @@ struct ContentView: View {
         // so the exit button sits at the true top of the window
         .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
+        // The shortcut lives on one always-present hidden button; putting
+        // it on the toolbar button breaks it once the toolbar hides
+        .background(
+            Button("") { isFocusMode.toggle() }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+        )
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -43,7 +50,6 @@ struct ContentView: View {
                         "Focus",
                         systemImage: "arrow.up.left.and.arrow.down.right")
                 }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
                 .help("Hide the sidebar and toolbar (⇧⌘F)")
 
                 Button(action: exportPDF) {
