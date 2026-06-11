@@ -120,6 +120,50 @@ struct TimelineConfig: Equatable {
     var events: [TimelineEvent] = []
     var customHolidays: [CustomHoliday] = []
 
+    /// A copy with one event moved or resized by whole days, clamped to
+    /// explicit timeline bounds. Used by canvas dragging.
+    func shiftingEvent(
+        id: UUID, part: TimelineRenderer.EventHitPart, by dayDelta: Int
+    ) -> TimelineConfig {
+        guard let index = events.firstIndex(where: { $0.id == id }) else {
+            return self
+        }
+        var copy = self
+        var event = copy.events[index]
+        let duration = event.start.days(until: event.effectiveEnd)
+
+        switch part {
+        case .whole:
+            var newStart = event.start.shifted(days: dayDelta)
+            if let bound = timelineStart, newStart < bound { newStart = bound }
+            if let bound = timelineEnd {
+                let lastStart = bound.shifted(days: -duration)
+                if newStart > lastStart { newStart = lastStart }
+            }
+            if event.end != nil {
+                event.end = newStart.shifted(days: duration)
+            }
+            event.start = newStart
+
+        case .start:
+            var newStart = event.start.shifted(days: dayDelta)
+            if let bound = timelineStart, newStart < bound { newStart = bound }
+            if newStart > event.effectiveEnd { newStart = event.effectiveEnd }
+            event.start = newStart
+
+        case .end:
+            guard event.end != nil else { return self }
+            var newEnd = event.effectiveEnd.shifted(days: dayDelta)
+            if let bound = timelineEnd, newEnd > bound { newEnd = bound }
+            if newEnd < event.start { newEnd = event.start }
+            event.end = newEnd
+        }
+
+        copy.events[index] = event
+        copy.events.sort { $0.start < $1.start }
+        return copy
+    }
+
     static func starter() -> TimelineConfig {
         var config = TimelineConfig()
         config.title = "Timeline"

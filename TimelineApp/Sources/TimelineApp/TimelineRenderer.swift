@@ -350,8 +350,13 @@ struct TimelineRenderer {
     }
 
     static func textWidth(_ text: String, font: CTFont) -> CGFloat {
+        // CoreText attribute keys, not AppKit's bridged ones — the Quick
+        // Look thumbnail target compiles this file without AppKit
         let attributed = NSAttributedString(
-            string: text, attributes: [.font: font])
+            string: text,
+            attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): font
+            ])
         let line = CTLineCreateWithAttributedString(attributed)
         return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
@@ -364,7 +369,11 @@ struct TimelineRenderer {
     ) {
         let attributed = NSAttributedString(
             string: text,
-            attributes: [.font: font, .foregroundColor: color])
+            attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): font,
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String):
+                    color,
+            ])
         let line = CTLineCreateWithAttributedString(attributed)
         let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
         var x = point.x
@@ -517,9 +526,18 @@ struct TimelineRenderer {
 
     // MARK: - Hit testing
 
+    /// Which part of an event a point lands on: the whole event (move)
+    /// or one end of a range bar (resize).
+    enum EventHitPart {
+        case whole
+        case start
+        case end
+    }
+
     /// The event at a canvas point (bottom-left origin), if any.
-    /// Markers, bars, and labels are all grabbable, with a little slop.
-    func eventID(at point: CGPoint) -> UUID? {
+    /// Markers, bars, and labels are all grabbable, with a little slop;
+    /// the ends of a range bar report as resize handles.
+    func eventHit(at point: CGPoint) -> (id: UUID, part: EventHitPart)? {
         for row in rows {
             let placements = layoutEvents(forRow: row.startDay, numDays: row.numDays)
             // Later placements draw on top, so search them first
@@ -529,22 +547,38 @@ struct TimelineRenderer {
                         x: min(p.startX, p.endX) - 4,
                         y: row.baselineY + p.lineYOffset - 7,
                         width: abs(p.endX - p.startX) + 8, height: 14)
-                    if bar.contains(point) { return p.event.id }
+                    if bar.contains(point) {
+                        let handle = min(8, abs(p.endX - p.startX) / 3)
+                        if !p.continuesLeft, abs(point.x - p.startX) <= handle {
+                            return (p.event.id, .start)
+                        }
+                        if !p.continuesRight, abs(point.x - p.endX) <= handle {
+                            return (p.event.id, .end)
+                        }
+                        return (p.event.id, .whole)
+                    }
                 } else {
                     let slop = dotRadius + 5
                     let dx = point.x - p.markerX
                     let dy = point.y - row.baselineY
-                    if dx * dx + dy * dy <= slop * slop { return p.event.id }
+                    if dx * dx + dy * dy <= slop * slop {
+                        return (p.event.id, .whole)
+                    }
                 }
                 if let labelX = p.labelX, let labelY = p.labelY {
                     let label = CGRect(
                         x: labelX - 2, y: row.baselineY + labelY - 3,
                         width: p.textWidth + 4, height: labelTextHeight + 4)
-                    if label.contains(point) { return p.event.id }
+                    if label.contains(point) { return (p.event.id, .whole) }
                 }
             }
         }
         return nil
+    }
+
+    /// Back-compat convenience for whole-event hits.
+    func eventID(at point: CGPoint) -> UUID? {
+        eventHit(at: point)?.id
     }
 
     // MARK: - Drawing

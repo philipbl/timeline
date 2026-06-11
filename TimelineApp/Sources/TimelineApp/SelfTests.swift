@@ -383,6 +383,55 @@ enum SelfTests {
                                 y: row.baselineY)) == nil)
         }
 
+        // Event shifting (canvas drag)
+        test("shiftEventMovesPreservingDuration") {
+            let bar = span("Bar", "2026-06-10", "2026-06-12")
+            let config = makeConfig(end: "2026-06-22", events: [bar])
+            let moved = config.shiftingEvent(id: bar.id, part: .whole, by: 3)
+            expect(moved.events[0].start == day("2026-06-13"))
+            expect(moved.events[0].end == day("2026-06-15"))
+        }
+        test("shiftEventResizesEnds") {
+            let bar = span("Bar", "2026-06-10", "2026-06-12")
+            let config = makeConfig(end: "2026-06-22", events: [bar])
+
+            let longer = config.shiftingEvent(id: bar.id, part: .end, by: 4)
+            expect(longer.events[0].start == day("2026-06-10"))
+            expect(longer.events[0].end == day("2026-06-16"))
+
+            let trimmed = config.shiftingEvent(id: bar.id, part: .start, by: 1)
+            expect(trimmed.events[0].start == day("2026-06-11"))
+            expect(trimmed.events[0].end == day("2026-06-12"))
+
+            // End can't cross start; start can't cross end
+            let collapsed = config.shiftingEvent(id: bar.id, part: .end, by: -10)
+            expect(collapsed.events[0].end == day("2026-06-10"))
+            let pinched = config.shiftingEvent(id: bar.id, part: .start, by: 10)
+            expect(pinched.events[0].start == day("2026-06-12"))
+        }
+        test("shiftEventClampsToBounds") {
+            let dot = point("Dot", "2026-06-10")
+            let config = makeConfig(end: "2026-06-22", events: [dot])
+            let early = config.shiftingEvent(id: dot.id, part: .whole, by: -10)
+            expect(early.events[0].start == day("2026-06-08"))
+            let late = config.shiftingEvent(id: dot.id, part: .whole, by: 30)
+            expect(late.events[0].start == day("2026-06-22"))
+        }
+        test("hitTestFindsBarEnds") {
+            let bar = span("Bar", "2026-06-13", "2026-06-16")
+            let config = makeConfig(end: "2026-06-22", events: [bar])
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            let row = renderer.rows[0]
+            let y = row.baselineY + renderer.rangeBaseOffset
+            let startX = renderer.leftMargin + 5 * renderer.dayWidth
+            let endX = renderer.leftMargin + 8 * renderer.dayWidth
+            expect(renderer.eventHit(at: CGPoint(x: startX, y: y))?.part == .start)
+            expect(renderer.eventHit(at: CGPoint(x: endX, y: y))?.part == .end)
+            expect(
+                renderer.eventHit(at: CGPoint(x: (startX + endX) / 2, y: y))?.part
+                    == .whole)
+        }
+
         // MCP server
         test("mcpInitializeAndToolsList") {
             let initResponse = MCPServer.handle([

@@ -65,7 +65,7 @@ enum Main {
 struct TimelineAppMain: App {
     var body: some Scene {
         DocumentGroup(newDocument: { TimelineDocument() }) { file in
-            ContentView(document: file.document)
+            ContentView(document: file.document, fileURL: file.fileURL)
         }
         .defaultSize(width: 1280, height: 760)
         .commands {

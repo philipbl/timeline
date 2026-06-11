@@ -27,5 +27,15 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
             ]
         ),
+        .executableTarget(
+            name: "TimelineThumbnail",
+            dependencies: ["Yams"],
+            path: "Sources/TimelineThumbnail",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                .linkedFramework("QuickLookThumbnailing"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+            ]
+        ),
     ]
 )

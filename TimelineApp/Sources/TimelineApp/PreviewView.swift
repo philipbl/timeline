@@ -7,15 +7,16 @@ import SwiftUI
 /// two-finger pan, double-click to reset.
 struct PreviewView: View {
     let config: TimelineConfig
-    /// Called while an event is dragged on the canvas: (event id, day
-    /// delta from drag start, final). nil disables dragging.
-    var onEventMoved: ((UUID, Int, Bool) -> Void)?
+    /// Called while an event is dragged on the canvas: (event id, part
+    /// being dragged, day delta from drag start, final). nil disables
+    /// dragging.
+    var onEventMoved: ((UUID, TimelineRenderer.EventHitPart, Int, Bool) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("showTodayMarker") private var showTodayMarker = true
     @State private var zoom: CGFloat = 1
     @State private var gestureBaseZoom: CGFloat?
-    @State private var draggedEventID: UUID?
+    @State private var dragTarget: (id: UUID, part: TimelineRenderer.EventHitPart)?
     @State private var dragMissed = false
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.25...3
@@ -48,6 +49,11 @@ struct PreviewView: View {
                             .frame(width: displayWidth)
                             .gesture(dragEventGesture(
                                 displayWidth: displayWidth, canvas: canvas))
+                            .onContinuousHover { phase in
+                                updateCursor(
+                                    phase, displayWidth: displayWidth,
+                                    canvas: canvas)
+                            }
                             .padding(24)
                     }
                 }
@@ -107,7 +113,8 @@ struct PreviewView: View {
         NSPasteboard.general.writeObjects([nsImage])
     }
 
-    /// Click-drag an event marker, bar, or label to move it day by day.
+    /// Click-drag an event marker, bar, or label to move it day by day;
+    /// drag a bar's end to change its duration.
     private func dragEventGesture(
         displayWidth: CGFloat, canvas: CGSize
     ) -> some Gesture {
@@ -116,36 +123,62 @@ struct PreviewView: View {
         return DragGesture(minimumDistance: 3)
             .onChanged { value in
                 guard onEventMoved != nil else { return }
-                if draggedEventID == nil && !dragMissed {
+                if dragTarget == nil && !dragMissed {
                     // Image coordinates are top-left; the canvas is
                     // bottom-left — flip y
                     let canvasPoint = CGPoint(
                         x: value.startLocation.x / scale,
                         y: canvas.height - value.startLocation.y / scale)
                     let renderer = TimelineRenderer(config: config, layout: .continuous)
-                    if let id = renderer.eventID(at: canvasPoint) {
-                        draggedEventID = id
+                    if let hit = renderer.eventHit(at: canvasPoint) {
+                        dragTarget = hit
                     } else {
                         dragMissed = true
                     }
                 }
-                guard let id = draggedEventID else { return }
+                guard let target = dragTarget else { return }
                 let renderer = TimelineRenderer(config: config, layout: .continuous)
                 let dayDelta = Int(
                     (value.translation.width / (renderer.dayWidth * scale)).rounded())
-                onEventMoved?(id, dayDelta, false)
+                onEventMoved?(target.id, target.part, dayDelta, false)
             }
             .onEnded { value in
                 defer {
-                    draggedEventID = nil
+                    dragTarget = nil
                     dragMissed = false
                 }
-                guard let id = draggedEventID else { return }
+                guard let target = dragTarget else { return }
                 let renderer = TimelineRenderer(config: config, layout: .continuous)
                 let dayDelta = Int(
                     (value.translation.width / (renderer.dayWidth * scale)).rounded())
-                onEventMoved?(id, dayDelta, true)
+                onEventMoved?(target.id, target.part, dayDelta, true)
             }
+    }
+
+    /// Cursor feedback: resize arrows over bar ends, open hand over
+    /// draggable events.
+    private func updateCursor(
+        _ phase: HoverPhase, displayWidth: CGFloat, canvas: CGSize
+    ) {
+        guard onEventMoved != nil else { return }
+        switch phase {
+        case .active(let location):
+            let scale = displayWidth / canvas.width
+            let canvasPoint = CGPoint(
+                x: location.x / scale,
+                y: canvas.height - location.y / scale)
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            switch renderer.eventHit(at: canvasPoint)?.part {
+            case .start, .end:
+                NSCursor.resizeLeftRight.set()
+            case .whole:
+                NSCursor.openHand.set()
+            case nil:
+                NSCursor.arrow.set()
+            }
+        case .ended:
+            NSCursor.arrow.set()
+        }
     }
 
     private var zoomControls: some View {

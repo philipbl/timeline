@@ -5,11 +5,16 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var document: TimelineDocument
+    /// On-disk location, for live reload of external edits (e.g. Claude
+    /// via MCP). nil for documents that haven't been saved yet.
+    var fileURL: URL?
+
     @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
     /// Snapshot taken when a canvas drag starts, so the whole drag
     /// becomes a single undo step on release.
     @State private var dragOriginalConfig: TimelineConfig?
+    @State private var fileWatcher: FileWatcher?
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -52,6 +57,8 @@ struct ContentView: View {
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,
                 toggleFocus: { isFocusMode.toggle() }))
+        .onAppear { startWatching() }
+        .onChange(of: fileURL) { startWatching() }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -159,33 +166,16 @@ struct ContentView: View {
         }
     }
 
-    /// Shift an event by whole days during a canvas drag. Live changes
-    /// bypass the undo manager; the release registers one undo step.
-    private func moveEvent(id: UUID, dayDelta: Int, isFinal: Bool) {
+    /// Move or resize an event by whole days during a canvas drag. Live
+    /// changes bypass the undo manager; the release registers one undo
+    /// step.
+    private func moveEvent(
+        id: UUID, part: TimelineRenderer.EventHitPart, dayDelta: Int, isFinal: Bool
+    ) {
         if dragOriginalConfig == nil { dragOriginalConfig = document.config }
-        guard let original = dragOriginalConfig,
-              let index = original.events.firstIndex(where: { $0.id == id })
-        else { return }
+        guard let original = dragOriginalConfig else { return }
 
-        var shifted = original
-        var event = shifted.events[index]
-        let duration = event.start.days(until: event.effectiveEnd)
-
-        var newStart = event.start.shifted(days: dayDelta)
-        // Keep the event inside explicit timeline bounds
-        if let timelineStart = shifted.timelineStart, newStart < timelineStart {
-            newStart = timelineStart
-        }
-        if let timelineEnd = shifted.timelineEnd {
-            let lastStart = timelineEnd.shifted(days: -duration)
-            if newStart > lastStart { newStart = lastStart }
-        }
-        if event.end != nil {
-            event.end = newStart.shifted(days: duration)
-        }
-        event.start = newStart
-        shifted.events[index] = event
-        shifted.events.sort { $0.start < $1.start }
+        let shifted = original.shiftingEvent(id: id, part: part, by: dayDelta)
 
         if isFinal {
             // Restore the original so the undo snapshot covers the drag
@@ -195,6 +185,26 @@ struct ContentView: View {
         } else {
             document.config = shifted
         }
+    }
+
+    private func startWatching() {
+        fileWatcher = nil
+        guard let fileURL else { return }
+        fileWatcher = FileWatcher(url: fileURL) {
+            reloadFromDisk()
+        }
+    }
+
+    /// Apply external file changes (e.g. Claude editing via MCP) to the
+    /// open document. Our own saves are recognized by comparing the disk
+    /// contents against the current config's serialization.
+    private func reloadFromDisk() {
+        guard let fileURL,
+              let text = try? String(contentsOf: fileURL, encoding: .utf8),
+              let parsed = try? ConfigYAML.parse(text)
+        else { return }
+        if text == ConfigYAML.serialize(document.config) { return }
+        document.update(parsed, undoManager: undoManager)
     }
 
     /// Print the paged (paper) layout through the system print dialog.

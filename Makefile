@@ -17,6 +17,14 @@ app:
 		$(APP)/Contents/PlugIns/TimelinePreview.appex/Contents/Info.plist
 	codesign --force -s - --entitlements TimelineApp/quicklook.entitlements \
 		$(APP)/Contents/PlugIns/TimelinePreview.appex
+	# Quick Look thumbnail extension
+	mkdir -p $(APP)/Contents/PlugIns/TimelineThumbnail.appex/Contents/MacOS
+	cp TimelineApp/.build/release/TimelineThumbnail \
+		$(APP)/Contents/PlugIns/TimelineThumbnail.appex/Contents/MacOS/TimelineThumbnail
+	cp TimelineApp/ThumbnailInfo.plist \
+		$(APP)/Contents/PlugIns/TimelineThumbnail.appex/Contents/Info.plist
+	codesign --force -s - --entitlements TimelineApp/quicklook.entitlements \
+		$(APP)/Contents/PlugIns/TimelineThumbnail.appex
 	codesign --force -s - $(APP)
 
 .PHONY: run-app
