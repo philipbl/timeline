@@ -29,8 +29,13 @@ struct ContentView: View {
 
     // Save-panel accessories use plain AppKit controls; SwiftUI hosting
     // views inside NSSavePanel don't reliably receive clicks.
+    // Option choices persist in UserDefaults across exports and launches.
+
+    private static let includeGeneratedKey = "exportIncludeGenerated"
+    private static let pngScaleIndexKey = "exportPNGScaleIndex"
 
     private func exportPDF() {
+        let defaults = UserDefaults.standard
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = suggestedName(extension: "pdf")
@@ -38,10 +43,12 @@ struct ContentView: View {
 
         let generatedCheckbox = NSButton(
             checkboxWithTitle: "Include generation date", target: nil, action: nil)
-        generatedCheckbox.state = .off
+        generatedCheckbox.state =
+            defaults.bool(forKey: Self.includeGeneratedKey) ? .on : .off
         panel.accessoryView = accessoryStack(views: [generatedCheckbox])
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        defaults.set(generatedCheckbox.state == .on, forKey: Self.includeGeneratedKey)
         do {
             try Exporter.pdfData(
                 for: document.config,
@@ -53,6 +60,7 @@ struct ContentView: View {
     }
 
     private func exportPNG() {
+        let defaults = UserDefaults.standard
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = suggestedName(extension: "png")
@@ -62,7 +70,8 @@ struct ContentView: View {
         resolutionPopup.addItems(withTitles: [
             "Standard (72 dpi)", "High (144 dpi)", "Very High (288 dpi)",
         ])
-        resolutionPopup.selectItem(at: 1)
+        let savedIndex = defaults.object(forKey: Self.pngScaleIndexKey) as? Int ?? 1
+        resolutionPopup.selectItem(at: max(0, min(savedIndex, 2)))
         let resolutionRow = NSStackView(views: [
             NSTextField(labelWithString: "Resolution:"), resolutionPopup,
         ])
@@ -70,11 +79,14 @@ struct ContentView: View {
 
         let generatedCheckbox = NSButton(
             checkboxWithTitle: "Include generation date", target: nil, action: nil)
-        generatedCheckbox.state = .off
+        generatedCheckbox.state =
+            defaults.bool(forKey: Self.includeGeneratedKey) ? .on : .off
 
         panel.accessoryView = accessoryStack(views: [resolutionRow, generatedCheckbox])
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        defaults.set(generatedCheckbox.state == .on, forKey: Self.includeGeneratedKey)
+        defaults.set(resolutionPopup.indexOfSelectedItem, forKey: Self.pngScaleIndexKey)
         let scales: [CGFloat] = [1, 2, 4]
         let scale = scales[max(0, min(resolutionPopup.indexOfSelectedItem, 2))]
         do {
