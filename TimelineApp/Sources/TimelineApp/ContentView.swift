@@ -27,17 +27,25 @@ struct ContentView: View {
         }
     }
 
+    // Save-panel accessories use plain AppKit controls; SwiftUI hosting
+    // views inside NSSavePanel don't reliably receive clicks.
+
     private func exportPDF() {
-        let options = ExportOptionsModel()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = suggestedName(extension: "pdf")
         panel.canCreateDirectories = true
-        attachAccessory(PDFExportOptionsView(options: options), to: panel)
+
+        let generatedCheckbox = NSButton(
+            checkboxWithTitle: "Include generation date", target: nil, action: nil)
+        generatedCheckbox.state = .off
+        panel.accessoryView = accessoryStack(views: [generatedCheckbox])
+
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try Exporter.pdfData(
-                for: document.config, includeGenerated: options.includeGenerated
+                for: document.config,
+                includeGenerated: generatedCheckbox.state == .on
             ).write(to: url)
         } catch {
             presentError(error)
@@ -45,26 +53,47 @@ struct ContentView: View {
     }
 
     private func exportPNG() {
-        let options = ExportOptionsModel()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = suggestedName(extension: "png")
         panel.canCreateDirectories = true
-        attachAccessory(PNGExportOptionsView(options: options), to: panel)
+
+        let resolutionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        resolutionPopup.addItems(withTitles: [
+            "Standard (72 dpi)", "High (144 dpi)", "Very High (288 dpi)",
+        ])
+        resolutionPopup.selectItem(at: 1)
+        let resolutionRow = NSStackView(views: [
+            NSTextField(labelWithString: "Resolution:"), resolutionPopup,
+        ])
+        resolutionRow.orientation = .horizontal
+
+        let generatedCheckbox = NSButton(
+            checkboxWithTitle: "Include generation date", target: nil, action: nil)
+        generatedCheckbox.state = .off
+
+        panel.accessoryView = accessoryStack(views: [resolutionRow, generatedCheckbox])
+
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let scales: [CGFloat] = [1, 2, 4]
+        let scale = scales[max(0, min(resolutionPopup.indexOfSelectedItem, 2))]
         do {
             try Exporter.writePNG(
-                for: document.config, to: url, scale: options.scale,
-                includeGenerated: options.includeGenerated)
+                for: document.config, to: url, scale: scale,
+                includeGenerated: generatedCheckbox.state == .on)
         } catch {
             presentError(error)
         }
     }
 
-    private func attachAccessory(_ view: some View, to panel: NSSavePanel) {
-        let hosting = NSHostingView(rootView: view)
-        hosting.setFrameSize(hosting.fittingSize)
-        panel.accessoryView = hosting
+    private func accessoryStack(views: [NSView]) -> NSView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 20, bottom: 12, right: 20)
+        stack.frame.size = stack.fittingSize
+        return stack
     }
 
     private func suggestedName(extension ext: String) -> String {
@@ -75,38 +104,5 @@ struct ContentView: View {
     private func presentError(_ error: Error) {
         let alert = NSAlert(error: error)
         alert.runModal()
-    }
-}
-
-final class ExportOptionsModel: ObservableObject {
-    @Published var includeGenerated = false
-    @Published var scale: CGFloat = 2
-}
-
-struct PDFExportOptionsView: View {
-    @ObservedObject var options: ExportOptionsModel
-
-    var body: some View {
-        Toggle("Include generation date", isOn: $options.includeGenerated)
-            .padding(12)
-    }
-}
-
-struct PNGExportOptionsView: View {
-    @ObservedObject var options: ExportOptionsModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Resolution:", selection: $options.scale) {
-                Text("Standard (72 dpi)").tag(CGFloat(1))
-                Text("High (144 dpi)").tag(CGFloat(2))
-                Text("Very High (288 dpi)").tag(CGFloat(4))
-            }
-            .pickerStyle(.menu)
-            .fixedSize()
-
-            Toggle("Include generation date", isOn: $options.includeGenerated)
-        }
-        .padding(12)
     }
 }

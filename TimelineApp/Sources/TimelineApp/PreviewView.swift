@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Live-rendered timeline canvas. Renders a bitmap whose resolution
@@ -57,7 +58,45 @@ struct PreviewView: View {
         .onTapGesture(count: 2) {
             withAnimation(.snappy) { zoom = 1 }
         }
+        .contextMenu {
+            Button {
+                copyImage(theme: theme, backgroundHex: canvasHex)
+            } label: {
+                Label("Copy Image", systemImage: "doc.on.doc")
+            }
+
+            Divider()
+
+            Button {
+                withAnimation(.snappy) { zoom = 1 }
+            } label: {
+                Label("Reset Zoom", systemImage: "1.magnifyingglass")
+            }
+            Button {
+                withAnimation(.snappy) { zoom = clampZoom(zoom * 1.25) }
+            } label: {
+                Label("Zoom In", systemImage: "plus.magnifyingglass")
+            }
+            Button {
+                withAnimation(.snappy) { zoom = clampZoom(zoom / 1.25) }
+            } label: {
+                Label("Zoom Out", systemImage: "minus.magnifyingglass")
+            }
+        }
         .overlay(alignment: .bottomTrailing) { zoomControls }
+    }
+
+    /// Copy the canvas to the clipboard as it currently looks (theme
+    /// included), at 2x resolution.
+    private func copyImage(theme: TimelineRenderer.Theme, backgroundHex: String) {
+        guard let image = Exporter.continuousImage(
+            for: config, theme: theme,
+            background: TimelineRenderer.cg(backgroundHex), scale: 2)
+        else { return }
+        let size = TimelineRenderer(config: config, layout: .continuous).canvasSize
+        let nsImage = NSImage(cgImage: image, size: size)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([nsImage])
     }
 
     private var zoomControls: some View {

@@ -242,6 +242,7 @@ struct EventRow: View {
     let onDelete: () -> Void
 
     @State private var showColorPicker = false
+    @State private var isHovering = false
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -262,18 +263,9 @@ struct EventRow: View {
                         set: { event.end = $0 }))
             }
 
-            HStack {
-                Toggle("Done", isOn: $event.done)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                Spacer()
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-                .help("Delete event")
-            }
+            Toggle("Done", isOn: $event.done)
+                .toggleStyle(.switch)
+                .controlSize(.small)
         } label: {
             HStack {
                 colorDot
@@ -283,11 +275,21 @@ struct EventRow: View {
                     .strikethrough(event.done)
                     .focused(nameFocus, equals: event.id)
                 Spacer()
-                Text(dateSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                if isHovering {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete event")
+                } else {
+                    Text(dateSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
+            .onHover { isHovering = $0 }
         }
     }
 
@@ -337,26 +339,19 @@ struct HolidayRow: View {
     @Binding var holiday: CustomHoliday
     let onDelete: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         DisclosureGroup {
             DayPicker(label: "Start", day: $holiday.start)
 
-            HStack {
-                Toggle(
-                    "Multi-day",
-                    isOn: Binding(
-                        get: { holiday.end != nil },
-                        set: { holiday.end = $0 ? holiday.start.shifted(days: 1) : nil }))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                Spacer()
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-                .help("Delete holiday")
-            }
+            Toggle(
+                "Multi-day",
+                isOn: Binding(
+                    get: { holiday.end != nil },
+                    set: { holiday.end = $0 ? holiday.start.shifted(days: 1) : nil }))
+            .toggleStyle(.switch)
+            .controlSize(.small)
             if holiday.end != nil {
                 DayPicker(
                     label: "End",
@@ -370,15 +365,25 @@ struct HolidayRow: View {
                     .labelsHidden()
                     .textFieldStyle(.plain)
                 Spacer()
-                Text(
-                    holiday.end != nil
-                        ? "\(holiday.start.shortLabel) – \(holiday.effectiveEnd.shortLabel)"
-                        : holiday.start.shortLabel
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                if isHovering {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete holiday")
+                } else {
+                    Text(
+                        holiday.end != nil
+                            ? "\(holiday.start.shortLabel) – \(holiday.effectiveEnd.shortLabel)"
+                            : holiday.start.shortLabel
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                }
             }
+            .onHover { isHovering = $0 }
         }
     }
 }

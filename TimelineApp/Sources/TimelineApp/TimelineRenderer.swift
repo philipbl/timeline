@@ -70,8 +70,10 @@ struct TimelineRenderer {
         var value: UInt64 = 0
         let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
         Scanner(string: cleaned).scanHexInt64(&value)
+        // sRGB, not generic RGB — must match SwiftUI's Color(.sRGB) exactly
+        // or the preview background visibly differs from the canvas fill
         return CGColor(
-            red: CGFloat((value >> 16) & 0xFF) / 255,
+            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
             green: CGFloat((value >> 8) & 0xFF) / 255,
             blue: CGFloat(value & 0xFF) / 255,
             alpha: 1)
