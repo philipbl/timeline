@@ -33,30 +33,33 @@ enum Exporter {
         return data as Data
     }
 
-    /// Single-page vector PDF of the continuous (title-once) layout.
-    /// Used by the live preview so zooming stays sharp.
-    static func continuousPDFData(
+    /// Bitmap of the continuous (title-once) layout for the live preview.
+    /// Scale chosen by the caller to match the current zoom level.
+    static func continuousImage(
         for config: TimelineConfig, theme: TimelineRenderer.Theme,
-        background: CGColor? = nil, includeGenerated: Bool = false
-    ) throws -> Data {
-        let renderer = TimelineRenderer(
-            config: config, layout: .continuous, theme: theme,
-            includeGenerated: includeGenerated)
-        let data = NSMutableData()
-        var mediaBox = CGRect(origin: .zero, size: renderer.canvasSize)
-        guard let consumer = CGDataConsumer(data: data as CFMutableData),
-              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
-        else { throw ExportError.contextCreationFailed }
+        background: CGColor? = nil, scale: CGFloat = 2
+    ) -> CGImage? {
+        let renderer = TimelineRenderer(config: config, layout: .continuous, theme: theme)
+        let size = renderer.canvasSize
+        let width = Int(size.width * scale)
+        let height = Int(size.height * scale)
+        guard width > 0, height > 0,
+              let ctx = CGContext(
+                  data: nil, width: width, height: height,
+                  bitsPerComponent: 8, bytesPerRow: 0,
+                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
 
-        ctx.beginPDFPage(nil)
+        ctx.scaleBy(x: scale, y: scale)
         if let background {
             ctx.setFillColor(background)
-            ctx.fill(mediaBox)
+            ctx.fill(CGRect(origin: .zero, size: size))
         }
+        ctx.setShouldAntialias(true)
+        ctx.setShouldSmoothFonts(true)
         renderer.drawPage(0, in: ctx)
-        ctx.endPDFPage()
-        ctx.closePDF()
-        return data as Data
+        return ctx.makeImage()
     }
 
     /// PNG export: one continuous image, white background, title once.

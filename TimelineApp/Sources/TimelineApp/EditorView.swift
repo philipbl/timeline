@@ -262,12 +262,17 @@ struct EventRow: View {
                         set: { event.end = $0 }))
             }
 
-            Toggle("Done", isOn: $event.done)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete Event", systemImage: "trash")
+            HStack {
+                Toggle("Done", isOn: $event.done)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                Spacer()
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .help("Delete event")
             }
         } label: {
             HStack {
@@ -336,23 +341,28 @@ struct HolidayRow: View {
         DisclosureGroup {
             DayPicker(label: "Start", day: $holiday.start)
 
-            Toggle(
-                "Multi-day",
-                isOn: Binding(
-                    get: { holiday.end != nil },
-                    set: { holiday.end = $0 ? holiday.start.shifted(days: 1) : nil }))
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            HStack {
+                Toggle(
+                    "Multi-day",
+                    isOn: Binding(
+                        get: { holiday.end != nil },
+                        set: { holiday.end = $0 ? holiday.start.shifted(days: 1) : nil }))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                Spacer()
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .help("Delete holiday")
+            }
             if holiday.end != nil {
                 DayPicker(
                     label: "End",
                     day: Binding(
                         get: { holiday.end ?? holiday.start },
                         set: { holiday.end = $0 }))
-            }
-
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete Holiday", systemImage: "trash")
             }
         } label: {
             HStack {
