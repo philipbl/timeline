@@ -3,11 +3,13 @@ import SwiftUI
 struct EditorView: View {
     @Binding var config: TimelineConfig
     @State private var expandedEvents: Set<UUID> = []
+    @FocusState private var focusedEventName: UUID?
 
     var body: some View {
         let resolvedColors = TimelineRenderer.resolvedColorHex(for: config)
 
-        Form {
+        // List (not Form) so .swipeActions works on the rows
+        List {
             Section("Timeline") {
                 TextField("Title", text: $config.title, prompt: Text("Untitled"))
 
@@ -29,6 +31,7 @@ struct EditorView: View {
                         resolvedColorHex: resolvedColors[event.id]
                             ?? TimelineRenderer.eventColors[0],
                         isExpanded: expansionBinding(for: event.id),
+                        nameFocus: $focusedEventName,
                         onDelete: { deleteEvent(event.id) }
                     )
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -36,6 +39,13 @@ struct EditorView: View {
                             deleteEvent(event.id)
                         } label: {
                             Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            deleteEvent(event.id)
+                        } label: {
+                            Label("Delete Event", systemImage: "trash")
                         }
                     }
                 }
@@ -82,7 +92,7 @@ struct EditorView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .listStyle(.inset)
         .onAppear(perform: sortEvents)
         .onChange(of: config.events.map(\.start)) {
             sortEvents()
@@ -112,6 +122,10 @@ struct EditorView: View {
             ?? config.events.endIndex
         config.events.insert(event, at: index)
         expandedEvents.insert(event.id)
+        // Focus the new row's name field once it exists in the hierarchy
+        DispatchQueue.main.async {
+            focusedEventName = event.id
+        }
     }
 
     private func deleteEvent(_ id: UUID) {
@@ -177,6 +191,7 @@ struct EventRow: View {
     @Binding var event: TimelineEvent
     let resolvedColorHex: String
     @Binding var isExpanded: Bool
+    var nameFocus: FocusState<UUID?>.Binding
     let onDelete: () -> Void
 
     @State private var showColorPicker = false
@@ -210,6 +225,7 @@ struct EventRow: View {
                     .labelsHidden()
                     .textFieldStyle(.plain)
                     .strikethrough(event.done)
+                    .focused(nameFocus, equals: event.id)
                 Spacer()
                 Text(dateSummary)
                     .font(.caption)

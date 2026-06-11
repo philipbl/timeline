@@ -12,8 +12,12 @@ enum Exporter {
 
     /// Paged, paper-style PDF — same as the Python CLI output, title
     /// repeated on every page.
-    static func pdfData(for config: TimelineConfig) throws -> Data {
-        let renderer = TimelineRenderer(config: config, layout: .paged, theme: .light)
+    static func pdfData(
+        for config: TimelineConfig, includeGenerated: Bool = false
+    ) throws -> Data {
+        let renderer = TimelineRenderer(
+            config: config, layout: .paged, theme: .light,
+            includeGenerated: includeGenerated)
         let data = NSMutableData()
         var mediaBox = CGRect(origin: .zero, size: TimelineRenderer.pageSize)
         guard let consumer = CGDataConsumer(data: data as CFMutableData),
@@ -29,14 +33,41 @@ enum Exporter {
         return data as Data
     }
 
-    /// Render the continuous (single-canvas, title-once) layout to a
-    /// CGImage. Scale 2 = 144 dpi. Transparent background unless a
-    /// background color is given.
-    static func continuousImage(
+    /// Single-page vector PDF of the continuous (title-once) layout.
+    /// Used by the live preview so zooming stays sharp.
+    static func continuousPDFData(
         for config: TimelineConfig, theme: TimelineRenderer.Theme,
-        background: CGColor? = nil, scale: CGFloat = 2
-    ) -> CGImage? {
-        let renderer = TimelineRenderer(config: config, layout: .continuous, theme: theme)
+        background: CGColor? = nil, includeGenerated: Bool = false
+    ) throws -> Data {
+        let renderer = TimelineRenderer(
+            config: config, layout: .continuous, theme: theme,
+            includeGenerated: includeGenerated)
+        let data = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: renderer.canvasSize)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else { throw ExportError.contextCreationFailed }
+
+        ctx.beginPDFPage(nil)
+        if let background {
+            ctx.setFillColor(background)
+            ctx.fill(mediaBox)
+        }
+        renderer.drawPage(0, in: ctx)
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return data as Data
+    }
+
+    /// PNG export: one continuous image, white background, title once.
+    /// Scale 1 = 72 dpi, 2 = 144 dpi, 4 = 288 dpi.
+    static func writePNG(
+        for config: TimelineConfig, to url: URL, scale: CGFloat = 2,
+        includeGenerated: Bool = false
+    ) throws {
+        let renderer = TimelineRenderer(
+            config: config, layout: .continuous, theme: .light,
+            includeGenerated: includeGenerated)
         let size = renderer.canvasSize
         let width = Int(size.width * scale)
         let height = Int(size.height * scale)
@@ -46,27 +77,20 @@ enum Exporter {
                   bitsPerComponent: 8, bytesPerRow: 0,
                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
+        else { throw ExportError.contextCreationFailed }
 
         ctx.scaleBy(x: scale, y: scale)
-        if let background {
-            ctx.setFillColor(background)
-            ctx.fill(CGRect(origin: .zero, size: size))
-        }
+        ctx.setFillColor(.white)
+        ctx.fill(CGRect(origin: .zero, size: size))
         ctx.setShouldAntialias(true)
         ctx.setShouldSmoothFonts(true)
         renderer.drawPage(0, in: ctx)
-        return ctx.makeImage()
-    }
 
-    /// PNG export: one continuous image, white background, title once.
-    static func writePNG(for config: TimelineConfig, to url: URL) throws {
-        guard let image = continuousImage(
-            for: config, theme: .light, background: CGColor.white)
-        else { throw ExportError.contextCreationFailed }
+        guard let image = ctx.makeImage() else {
+            throw ExportError.contextCreationFailed
+        }
         let rep = NSBitmapImageRep(cgImage: image)
-        let renderer = TimelineRenderer(config: config, layout: .continuous)
-        rep.size = renderer.canvasSize  // points, so the PNG reports 144 dpi
+        rep.size = size  // points, so the PNG reports its dpi correctly
         guard let data = rep.representation(using: .png, properties: [:]) else {
             throw ExportError.contextCreationFailed
         }

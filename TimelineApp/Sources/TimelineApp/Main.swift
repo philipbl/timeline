@@ -12,10 +12,14 @@ enum Main {
                 let text = try String(contentsOfFile: args[2], encoding: .utf8)
                 let config = try ConfigYAML.parse(text)
                 let outputURL = URL(fileURLWithPath: args[3])
+                // CLI renders match the Python tool, which always stamps
+                // the generation date
                 if outputURL.pathExtension.lowercased() == "png" {
-                    try Exporter.writePNG(for: config, to: outputURL)
+                    try Exporter.writePNG(
+                        for: config, to: outputURL, includeGenerated: true)
                 } else {
-                    try Exporter.pdfData(for: config).write(to: outputURL)
+                    try Exporter.pdfData(for: config, includeGenerated: true)
+                        .write(to: outputURL)
                 }
                 print("Rendered \(args[2]) -> \(args[3])")
                 exit(0)

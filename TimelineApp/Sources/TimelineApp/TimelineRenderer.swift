@@ -100,6 +100,7 @@ struct TimelineRenderer {
     let config: TimelineConfig
     let layout: Layout
     let theme: Theme
+    let includeGenerated: Bool
     let startDay: Day
     let endDay: Day
     let totalDays: Int
@@ -154,10 +155,14 @@ struct TimelineRenderer {
         return result
     }
 
-    init(config: TimelineConfig, layout: Layout = .paged, theme: Theme = .light) {
+    init(
+        config: TimelineConfig, layout: Layout = .paged, theme: Theme = .light,
+        includeGenerated: Bool = false
+    ) {
         self.config = config
         self.layout = layout
         self.theme = theme
+        self.includeGenerated = includeGenerated
 
         let start = config.timelineStart ?? .today()
         var end = config.timelineEnd ?? start
@@ -478,13 +483,15 @@ struct TimelineRenderer {
                 align: .center, in: ctx)
         }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        Self.drawText(
-            "Generated \(formatter.string(from: Date()))",
-            at: CGPoint(x: width - rightMargin, y: 28.8),
-            font: Self.font("Helvetica", 7), color: theme.footer,
-            align: .right, in: ctx)
+        if includeGenerated {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d, yyyy"
+            Self.drawText(
+                "Generated \(formatter.string(from: Date()))",
+                at: CGPoint(x: width - rightMargin, y: 28.8),
+                font: Self.font("Helvetica", 7), color: theme.footer,
+                align: .right, in: ctx)
+        }
     }
 
     private func monthDay(_ day: Day) -> String {

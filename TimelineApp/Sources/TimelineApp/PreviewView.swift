@@ -1,73 +1,47 @@
+import PDFKit
 import SwiftUI
 
-/// Live-rendered timeline canvas. Follows the app's light/dark appearance,
-/// draws the title once, and supports pinch-zoom and two-finger panning.
+/// Live-rendered timeline canvas. Vector all the way down: the renderer
+/// produces a single-page PDF and PDFKit displays it, so zooming stays
+/// sharp at any magnification. Pinch to zoom, two-finger pan.
 struct PreviewView: View {
     let config: TimelineConfig
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var zoom: CGFloat = 1
-    @State private var gestureBaseZoom: CGFloat?
-
-    private static let zoomRange: ClosedRange<CGFloat> = 0.25...6
+    @StateObject private var proxy = PDFViewProxy()
 
     var body: some View {
-        let theme: TimelineRenderer.Theme = colorScheme == .dark ? .dark : .light
+        let dark = colorScheme == .dark
+        let theme: TimelineRenderer.Theme = dark ? .dark : .light
+        let background = TimelineRenderer.cg(dark ? "#1B1B20" : "#FFFFFF")
+        let data =
+            (try? Exporter.continuousPDFData(
+                for: config, theme: theme, background: background)) ?? Data()
 
-        GeometryReader { geo in
-            ScrollView([.vertical, .horizontal]) {
-                Group {
-                    if let image = Exporter.continuousImage(for: config, theme: theme) {
-                        let canvas = TimelineRenderer(config: config, layout: .continuous)
-                            .canvasSize
-                        let fitWidth = max(geo.size.width - 48, 200)
-                        let displayWidth = fitWidth * zoom
-                        Image(decorative: image, scale: 2)
-                            .resizable()
-                            .aspectRatio(canvas.width / canvas.height, contentMode: .fit)
-                            .frame(width: displayWidth)
-                            .padding(24)
-                    }
-                }
-                .frame(minWidth: geo.size.width, minHeight: geo.size.height)
-            }
-        }
-        .background(Color(nsColor: .underPageBackgroundColor))
-        .gesture(
-            MagnifyGesture()
-                .onChanged { value in
-                    if gestureBaseZoom == nil { gestureBaseZoom = zoom }
-                    zoom = clampZoom((gestureBaseZoom ?? 1) * value.magnification)
-                }
-                .onEnded { _ in gestureBaseZoom = nil }
-        )
-        .onTapGesture(count: 2) {
-            withAnimation(.snappy) { zoom = 1 }
-        }
-        .overlay(alignment: .bottomTrailing) { zoomControls }
+        PDFCanvasView(data: data, proxy: proxy)
+            .overlay(alignment: .bottomTrailing) { zoomControls }
     }
 
     private var zoomControls: some View {
         HStack(spacing: 2) {
             Button {
-                withAnimation(.snappy) { zoom = clampZoom(zoom / 1.25) }
+                proxy.view?.zoomOut(nil)
             } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
             .help("Zoom out")
 
             Button {
-                withAnimation(.snappy) { zoom = 1 }
+                if let view = proxy.view {
+                    view.scaleFactor = view.scaleFactorForSizeToFit
+                }
             } label: {
-                Text("\(Int(round(zoom * 100)))%")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .frame(minWidth: 38)
+                Image(systemName: "arrow.down.right.and.arrow.up.left.rectangle")
             }
-            .help("Reset zoom")
+            .help("Zoom to fit")
 
             Button {
-                withAnimation(.snappy) { zoom = clampZoom(zoom * 1.25) }
+                proxy.view?.zoomIn(nil)
             } label: {
                 Image(systemName: "plus.magnifyingglass")
             }
@@ -78,8 +52,59 @@ struct PreviewView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .padding(12)
     }
+}
 
-    private func clampZoom(_ value: CGFloat) -> CGFloat {
-        min(max(value, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+final class PDFViewProxy: ObservableObject {
+    weak var view: PDFView?
+}
+
+struct PDFCanvasView: NSViewRepresentable {
+    let data: Data
+    let proxy: PDFViewProxy
+
+    final class Coordinator {
+        var lastData: Data?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.displaysPageBreaks = false
+        view.pageShadowsEnabled = false
+        view.autoScales = true
+        view.minScaleFactor = 0.1
+        view.maxScaleFactor = 12
+        view.backgroundColor = .underPageBackgroundColor
+        proxy.view = view
+        return view
+    }
+
+    func updateNSView(_ view: PDFView, context: Context) {
+        proxy.view = view
+        guard context.coordinator.lastData != data else { return }
+        let isFirstDocument = context.coordinator.lastData == nil
+        context.coordinator.lastData = data
+
+        // Preserve zoom and scroll position across live re-renders
+        let wasAutoScaling = view.autoScales
+        let oldScale = view.scaleFactor
+        let destination = view.currentDestination
+
+        view.document = PDFDocument(data: data)
+
+        if isFirstDocument || wasAutoScaling {
+            // Let PDFKit fit the page once the view has its real size
+            view.autoScales = true
+        } else {
+            view.scaleFactor = oldScale
+            if let destination, let page = view.document?.page(at: 0) {
+                let point = destination.point
+                if point.x.isFinite && point.y.isFinite {
+                    view.go(to: PDFDestination(page: page, at: point))
+                }
+            }
+        }
     }
 }
