@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Actions the focused document window exposes to the menu bar.
@@ -24,6 +25,13 @@ struct TimelineCommands: Commands {
     @AppStorage("showTodayMarker") private var showTodayMarker = true
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Timeline") {
+                NSApplication.shared.orderFrontStandardAboutPanel(
+                    options: [.credits: Self.aboutCredits])
+            }
+        }
+
         CommandGroup(after: .saveItem) {
             Divider()
             Button("Export as PDF…") { actions?.exportPDF() }
@@ -47,5 +55,29 @@ struct TimelineCommands: Commands {
                 .disabled(actions == nil)
             Divider()
         }
+    }
+
+    /// Credits shown in the standard About panel: a one-liner and a
+    /// link to the repository. Version/copyright come from Info.plist.
+    private static var aboutCredits: NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+
+        let credits = NSMutableAttributedString(
+            string: "Visual timelines for planning and tracking.\n\n",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraph,
+            ])
+        credits.append(
+            NSAttributedString(
+                string: "github.com/philipbl/timeline",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .link: URL(string: "https://github.com/philipbl/timeline")!,
+                    .paragraphStyle: paragraph,
+                ]))
+        return credits
     }
 }

@@ -1,4 +1,6 @@
 APP := build/Timeline.app
+VERSION := $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//')
+BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
 .PHONY: app
 app:
@@ -7,6 +9,11 @@ app:
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp TimelineApp/.build/release/TimelineApp $(APP)/Contents/MacOS/Timeline
 	cp TimelineApp/Info.plist $(APP)/Contents/Info.plist
+	# Stamp the version from the git tag so About stays honest
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" \
+		$(APP)/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(BUILD_NUMBER)" \
+		$(APP)/Contents/Info.plist
 	cp TimelineApp/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	cp TimelineApp/DocIcon.icns $(APP)/Contents/Resources/DocIcon.icns
 	# Quick Look preview extension

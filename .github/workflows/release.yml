@@ -12,6 +12,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags so make app can stamp the version
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Build app
         run: make app
