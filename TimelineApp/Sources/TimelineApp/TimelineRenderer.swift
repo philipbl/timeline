@@ -597,11 +597,12 @@ struct TimelineRenderer {
             }
         }
 
-        // Holiday names: centered in the band when it holds one holiday
+        // Holiday names: centered in the band when it holds one holiday.
+        // No shading, no names.
         let holidayFont = Self.font("Helvetica-Oblique", 6.5)
         var lastLabelEnd = -CGFloat.infinity
         i = 0
-        while i < row.numDays {
+        while config.shadeHolidays, i < row.numDays {
             if !isWeekendOrHoliday(row.startDay.shifted(days: i)) {
                 i += 1
                 continue
