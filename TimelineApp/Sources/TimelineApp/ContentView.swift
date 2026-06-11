@@ -4,39 +4,44 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Binding var document: TimelineDocument
-    @State private var isPresentation = false
+    @State private var isFocusMode = false
 
     var body: some View {
         HSplitView {
-            if !isPresentation {
+            if !isFocusMode {
                 EditorView(config: $document.config)
                     .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
             }
             PreviewView(config: document.config)
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .topTrailing) {
-                    if isPresentation {
-                        Button(action: togglePresentation) {
+                    if isFocusMode {
+                        Button {
+                            isFocusMode = false
+                        } label: {
                             Image(systemName: "arrow.down.right.and.arrow.up.left")
                         }
                         .buttonStyle(.borderless)
+                        .keyboardShortcut("f", modifiers: [.command, .shift])
                         .padding(8)
                         .background(.regularMaterial, in: Circle())
                         .padding(12)
-                        .help("Exit full screen")
+                        .help("Show the sidebar and toolbar (⇧⌘F)")
                     }
                 }
         }
-        .toolbar(isPresentation ? .hidden : .automatic, for: .windowToolbar)
+        .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button(action: togglePresentation) {
+                Button {
+                    isFocusMode = true
+                } label: {
                     Label(
-                        "Full Screen",
+                        "Focus",
                         systemImage: "arrow.up.left.and.arrow.down.right")
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                .help("Show only the timeline, full screen (⇧⌘F)")
+                .help("Hide the sidebar and toolbar (⇧⌘F)")
 
                 Button(action: exportPDF) {
                     Label("Export PDF", systemImage: "doc.richtext")
@@ -48,23 +53,6 @@ struct ContentView: View {
                 }
                 .help("Export the timeline as a PNG image")
             }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: NSWindow.willExitFullScreenNotification)
-        ) { _ in
-            isPresentation = false
-        }
-    }
-
-    /// Full-screen canvas: hides the editor and toolbar and takes the
-    /// window into macOS full screen. Esc exits.
-    private func togglePresentation() {
-        isPresentation.toggle()
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        let isFullScreen = window.styleMask.contains(.fullScreen)
-        if isPresentation != isFullScreen {
-            window.toggleFullScreen(nil)
         }
     }
 
