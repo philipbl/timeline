@@ -7,11 +7,16 @@ import SwiftUI
 /// two-finger pan, double-click to reset.
 struct PreviewView: View {
     let config: TimelineConfig
+    /// Called while an event is dragged on the canvas: (event id, day
+    /// delta from drag start, final). nil disables dragging.
+    var onEventMoved: ((UUID, Int, Bool) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("showTodayMarker") private var showTodayMarker = true
     @State private var zoom: CGFloat = 1
     @State private var gestureBaseZoom: CGFloat?
+    @State private var draggedEventID: UUID?
+    @State private var dragMissed = false
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.25...3
     private static let maxRenderScale: CGFloat = 6  // ~432 dpi
@@ -41,6 +46,8 @@ struct PreviewView: View {
                             .resizable()
                             .aspectRatio(canvas.width / canvas.height, contentMode: .fit)
                             .frame(width: displayWidth)
+                            .gesture(dragEventGesture(
+                                displayWidth: displayWidth, canvas: canvas))
                             .padding(24)
                     }
                 }
@@ -98,6 +105,47 @@ struct PreviewView: View {
         let nsImage = NSImage(cgImage: image, size: size)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([nsImage])
+    }
+
+    /// Click-drag an event marker, bar, or label to move it day by day.
+    private func dragEventGesture(
+        displayWidth: CGFloat, canvas: CGSize
+    ) -> some Gesture {
+        let scale = displayWidth / canvas.width
+
+        return DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard onEventMoved != nil else { return }
+                if draggedEventID == nil && !dragMissed {
+                    // Image coordinates are top-left; the canvas is
+                    // bottom-left — flip y
+                    let canvasPoint = CGPoint(
+                        x: value.startLocation.x / scale,
+                        y: canvas.height - value.startLocation.y / scale)
+                    let renderer = TimelineRenderer(config: config, layout: .continuous)
+                    if let id = renderer.eventID(at: canvasPoint) {
+                        draggedEventID = id
+                    } else {
+                        dragMissed = true
+                    }
+                }
+                guard let id = draggedEventID else { return }
+                let renderer = TimelineRenderer(config: config, layout: .continuous)
+                let dayDelta = Int(
+                    (value.translation.width / (renderer.dayWidth * scale)).rounded())
+                onEventMoved?(id, dayDelta, false)
+            }
+            .onEnded { value in
+                defer {
+                    draggedEventID = nil
+                    dragMissed = false
+                }
+                guard let id = draggedEventID else { return }
+                let renderer = TimelineRenderer(config: config, layout: .continuous)
+                let dayDelta = Int(
+                    (value.translation.width / (renderer.dayWidth * scale)).rounded())
+                onEventMoved?(id, dayDelta, true)
+            }
     }
 
     private var zoomControls: some View {
