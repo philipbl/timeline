@@ -2,16 +2,21 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    static var yamlTimeline: UTType {
-        UTType(importedAs: "public.yaml", conformingTo: .plainText)
+    /// Our own document type (.timeline) so the app doesn't claim every
+    /// YAML file on the system. The contents are still plain YAML and
+    /// stay compatible with the Python CLI.
+    static var timelineDocument: UTType {
+        UTType(exportedAs: "com.philipbl.timeline", conformingTo: .yaml)
     }
 }
 
 struct TimelineDocument: FileDocument {
     var config: TimelineConfig
 
-    static var readableContentTypes: [UTType] { [.yamlTimeline, .plainText] }
-    static var writableContentTypes: [UTType] { [.yamlTimeline] }
+    // .yaml stays openable (File > Open an existing events.yaml) but the
+    // app only claims .timeline in Finder and always saves as .timeline
+    static var readableContentTypes: [UTType] { [.timelineDocument, .yaml] }
+    static var writableContentTypes: [UTType] { [.timelineDocument] }
 
     init() {
         config = TimelineConfig.starter()

@@ -165,6 +165,7 @@ struct EventRow: View {
                     .frame(width: 9, height: 9)
                     .opacity(event.colorHex == nil ? 0.4 : 1)
                 TextField("Name", text: $event.name, prompt: Text("Event name"))
+                    .labelsHidden()
                     .textFieldStyle(.plain)
                     .strikethrough(event.done)
                 Spacer()
@@ -211,6 +212,7 @@ struct HolidayRow: View {
         } label: {
             HStack {
                 TextField("Name", text: $holiday.name, prompt: Text("Holiday name (optional)"))
+                    .labelsHidden()
                     .textFieldStyle(.plain)
                 Spacer()
                 Text(

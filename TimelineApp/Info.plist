@@ -28,34 +28,33 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Timeline Configuration</string>
+			<string>Timeline Document</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Alternate</string>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>public.yaml</string>
+				<string>com.philipbl.timeline</string>
 			</array>
 		</dict>
 	</array>
-	<key>UTImportedTypeDeclarations</key>
+	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>public.yaml</string>
+			<string>com.philipbl.timeline</string>
 			<key>UTTypeDescription</key>
-			<string>YAML Document</string>
+			<string>Timeline Document</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.plain-text</string>
+				<string>public.yaml</string>
 			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>yaml</string>
-					<string>yml</string>
+					<string>timeline</string>
 				</array>
 			</dict>
 		</dict>
