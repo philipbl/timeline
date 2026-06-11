@@ -15,6 +15,7 @@ title: "Project Timeline - Q4 2025"
 
 # Optional: Gray bands behind weekends and holidays (default: true)
 # shade_weekends: false
+# shade_holidays: false
 
 # Optional: Color palette - bright (default), muted, or jewel
 # palette: "muted"

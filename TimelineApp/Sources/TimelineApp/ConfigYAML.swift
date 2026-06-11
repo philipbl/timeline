@@ -33,6 +33,7 @@ enum ConfigYAML {
         config.timelineEnd = try (root["timeline_end"]).map(parseDay)
         config.daysPerRow = root["days_per_row"] as? Int
         config.shadeWeekends = root["shade_weekends"] as? Bool ?? true
+        config.shadeHolidays = root["shade_holidays"] as? Bool ?? true
         config.paletteName = root["palette"] as? String
 
         for item in root["custom_holidays"] as? [Any] ?? [] {
@@ -100,12 +101,15 @@ enum ConfigYAML {
         if !config.shadeWeekends {
             lines.append("shade_weekends: false")
         }
+        if !config.shadeHolidays {
+            lines.append("shade_holidays: false")
+        }
         if let palette = config.paletteName {
             lines.append("palette: \"\(palette)\"")
         }
         if config.timelineStart != nil || config.timelineEnd != nil
             || config.daysPerRow != nil || !config.shadeWeekends
-            || config.paletteName != nil {
+            || !config.shadeHolidays || config.paletteName != nil {
             lines.append("")
         }
 

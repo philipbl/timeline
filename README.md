@@ -42,6 +42,7 @@ timeline_start: "2026-06-08"   # optional; defaults to today
 timeline_end: "2026-07-20"     # optional; defaults to the last event
 days_per_row: 22               # optional; days per timeline row
 shade_weekends: true           # optional; default true
+shade_holidays: true           # optional; default true
 palette: "bright"              # optional; bright | muted | jewel
 
 custom_holidays:

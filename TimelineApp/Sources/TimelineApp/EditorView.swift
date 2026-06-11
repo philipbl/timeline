@@ -44,7 +44,11 @@ struct EditorView: View {
                     }
                     .padding(.top, 4)
 
-                    Toggle("Shade weekends & holidays", isOn: $config.shadeWeekends)
+                    Toggle("Shade weekends", isOn: $config.shadeWeekends)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+
+                    Toggle("Shade holidays", isOn: $config.shadeHolidays)
                         .toggleStyle(.switch)
                         .controlSize(.small)
 

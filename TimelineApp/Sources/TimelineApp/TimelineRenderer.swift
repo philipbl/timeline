@@ -288,13 +288,22 @@ struct TimelineRenderer {
 
     // MARK: - Calendar helpers
 
-    func isWeekendOrHoliday(_ day: Day) -> Bool {
-        if day.isWeekend { return true }
+    func isHoliday(_ day: Day) -> Bool {
         if usHolidays[day] != nil { return true }
         for holiday in config.customHolidays {
             if holiday.start <= day && day <= holiday.effectiveEnd { return true }
         }
         return false
+    }
+
+    func isWeekendOrHoliday(_ day: Day) -> Bool {
+        day.isWeekend || isHoliday(day)
+    }
+
+    /// Whether a day gets a gray band, per the shading options.
+    func shouldShade(_ day: Day) -> Bool {
+        (config.shadeWeekends && day.isWeekend)
+            || (config.shadeHolidays && isHoliday(day))
     }
 
     func holidayName(_ day: Day) -> String? {
@@ -533,13 +542,13 @@ struct TimelineRenderer {
         let bandBottom = y - 40
         let bandHeight: CGFloat = 54
 
-        // Merged bands for consecutive weekend/holiday days
+        // Merged bands for consecutive shaded days
         var i = 0
-        while config.shadeWeekends, i < row.numDays {
-            if isWeekendOrHoliday(row.startDay.shifted(days: i)) {
+        while i < row.numDays {
+            if shouldShade(row.startDay.shifted(days: i)) {
                 var j = i
                 while j + 1 < row.numDays,
-                    isWeekendOrHoliday(row.startDay.shifted(days: j + 1)) {
+                    shouldShade(row.startDay.shifted(days: j + 1)) {
                     j += 1
                 }
                 let bandX = startX + CGFloat(i) * dayWidth - dayWidth / 2
