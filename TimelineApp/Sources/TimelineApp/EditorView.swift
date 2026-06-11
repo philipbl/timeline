@@ -2,8 +2,11 @@ import SwiftUI
 
 struct EditorView: View {
     @Binding var config: TimelineConfig
+    @State private var expandedEvents: Set<UUID> = []
 
     var body: some View {
+        let resolvedColors = TimelineRenderer.resolvedColorHex(for: config)
+
         Form {
             Section("Timeline") {
                 TextField("Title", text: $config.title, prompt: Text("Untitled"))
@@ -21,19 +24,26 @@ struct EditorView: View {
 
             Section {
                 ForEach($config.events) { $event in
-                    EventRow(event: $event) {
-                        config.events.removeAll { $0.id == event.id }
+                    EventRow(
+                        event: $event,
+                        resolvedColorHex: resolvedColors[event.id]
+                            ?? TimelineRenderer.eventColors[0],
+                        isExpanded: expansionBinding(for: event.id),
+                        onDelete: { deleteEvent(event.id) }
+                    )
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteEvent(event.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
             } header: {
                 HStack {
                     Text("Events")
                     Spacer()
-                    Button {
-                        withAnimation {
-                            config.events.append(newEvent())
-                        }
-                    } label: {
+                    Button(action: addEvent) {
                         Label("Add Event", systemImage: "plus")
                     }
                     .buttonStyle(.borderless)
@@ -46,15 +56,20 @@ struct EditorView: View {
                     HolidayRow(holiday: $holiday) {
                         config.customHolidays.removeAll { $0.id == holiday.id }
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            config.customHolidays.removeAll { $0.id == holiday.id }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
             } header: {
                 HStack {
                     Text("Custom Holidays")
                     Spacer()
                     Button {
-                        withAnimation {
-                            config.customHolidays.append(CustomHoliday(start: .today()))
-                        }
+                        config.customHolidays.append(CustomHoliday(start: .today()))
                     } label: {
                         Label("Add Holiday", systemImage: "plus")
                     }
@@ -68,12 +83,52 @@ struct EditorView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear(perform: sortEvents)
+        .onChange(of: config.events.map(\.start)) {
+            sortEvents()
+        }
     }
 
-    private func newEvent() -> TimelineEvent {
-        let start = config.timelineStart ?? .today()
-        let lastEvent = config.events.map(\.effectiveEnd).max()
-        return TimelineEvent(name: "New Event", start: lastEvent?.shifted(days: 1) ?? start)
+    /// Keep events chronological at all times — including after edits to
+    /// a start date and when new events are inserted.
+    private func sortEvents() {
+        let sorted = config.events.sorted { $0.start < $1.start }
+        if sorted.map(\.id) != config.events.map(\.id) {
+            config.events = sorted
+        }
+    }
+
+    private func addEvent() {
+        var start = Day.today()
+        if let timelineStart = config.timelineStart, start < timelineStart {
+            start = timelineStart
+        }
+        if let timelineEnd = config.timelineEnd, timelineEnd < start {
+            start = timelineEnd
+        }
+        let event = TimelineEvent(name: "", start: start)
+        // Insert at the chronological position rather than appending
+        let index = config.events.firstIndex { event.start < $0.start }
+            ?? config.events.endIndex
+        config.events.insert(event, at: index)
+        expandedEvents.insert(event.id)
+    }
+
+    private func deleteEvent(_ id: UUID) {
+        config.events.removeAll { $0.id == id }
+        expandedEvents.remove(id)
+    }
+
+    private func expansionBinding(for id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { expandedEvents.contains(id) },
+            set: { expanded in
+                if expanded {
+                    expandedEvents.insert(id)
+                } else {
+                    expandedEvents.remove(id)
+                }
+            })
     }
 }
 
@@ -120,10 +175,14 @@ struct OptionalDayRow: View {
 
 struct EventRow: View {
     @Binding var event: TimelineEvent
+    let resolvedColorHex: String
+    @Binding var isExpanded: Bool
     let onDelete: () -> Void
 
+    @State private var showColorPicker = false
+
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $isExpanded) {
             DayPicker(label: "Start", day: $event.start)
 
             Toggle(
@@ -141,29 +200,12 @@ struct EventRow: View {
 
             Toggle("Done", isOn: $event.done)
 
-            Toggle(
-                "Custom color",
-                isOn: Binding(
-                    get: { event.colorHex != nil },
-                    set: { event.colorHex = $0 ? "#FF6B6B" : nil }))
-            if event.colorHex != nil {
-                ColorPicker(
-                    "Color",
-                    selection: Binding(
-                        get: { Color(hex: event.colorHex ?? "#FF6B6B") },
-                        set: { event.colorHex = $0.hexString }),
-                    supportsOpacity: false)
-            }
-
             Button(role: .destructive, action: onDelete) {
                 Label("Delete Event", systemImage: "trash")
             }
         } label: {
             HStack {
-                Circle()
-                    .fill(Color(hex: event.colorHex ?? "#9A9AA2"))
-                    .frame(width: 9, height: 9)
-                    .opacity(event.colorHex == nil ? 0.4 : 1)
+                colorDot
                 TextField("Name", text: $event.name, prompt: Text("Event name"))
                     .labelsHidden()
                     .textFieldStyle(.plain)
@@ -174,6 +216,40 @@ struct EventRow: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+        }
+    }
+
+    /// The event's effective color; click to customize it.
+    private var colorDot: some View {
+        Button {
+            showColorPicker = true
+        } label: {
+            Circle()
+                .fill(Color(hex: resolvedColorHex))
+                .frame(width: 11, height: 11)
+                .overlay(
+                    Circle().strokeBorder(.quaternary, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help("Change event color")
+        .popover(isPresented: $showColorPicker, arrowEdge: .bottom) {
+            VStack(spacing: 10) {
+                ColorPicker(
+                    "Event Color",
+                    selection: Binding(
+                        get: { Color(hex: event.colorHex ?? resolvedColorHex) },
+                        set: { event.colorHex = $0.hexString }),
+                    supportsOpacity: false)
+
+                if event.colorHex != nil {
+                    Button("Use Automatic Color") {
+                        event.colorHex = nil
+                        showColorPicker = false
+                    }
+                }
+            }
+            .padding(12)
+            .frame(minWidth: 180)
         }
     }
 

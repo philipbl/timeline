@@ -10,8 +10,10 @@ enum Exporter {
         var errorDescription: String? { "Could not create a graphics context." }
     }
 
+    /// Paged, paper-style PDF — same as the Python CLI output, title
+    /// repeated on every page.
     static func pdfData(for config: TimelineConfig) throws -> Data {
-        let renderer = TimelineRenderer(config: config)
+        let renderer = TimelineRenderer(config: config, layout: .paged, theme: .light)
         let data = NSMutableData()
         var mediaBox = CGRect(origin: .zero, size: TimelineRenderer.pageSize)
         guard let consumer = CGDataConsumer(data: data as CFMutableData),
@@ -27,58 +29,47 @@ enum Exporter {
         return data as Data
     }
 
-    /// Render one page to a CGImage. Scale 2 = 144 dpi.
-    static func pageImage(
-        for config: TimelineConfig, page: Int, scale: CGFloat = 2
+    /// Render the continuous (single-canvas, title-once) layout to a
+    /// CGImage. Scale 2 = 144 dpi. Transparent background unless a
+    /// background color is given.
+    static func continuousImage(
+        for config: TimelineConfig, theme: TimelineRenderer.Theme,
+        background: CGColor? = nil, scale: CGFloat = 2
     ) -> CGImage? {
-        let renderer = TimelineRenderer(config: config)
-        let size = TimelineRenderer.pageSize
+        let renderer = TimelineRenderer(config: config, layout: .continuous, theme: theme)
+        let size = renderer.canvasSize
         let width = Int(size.width * scale)
         let height = Int(size.height * scale)
-        guard let ctx = CGContext(
-            data: nil, width: width, height: height,
-            bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        guard width > 0, height > 0,
+              let ctx = CGContext(
+                  data: nil, width: width, height: height,
+                  bitsPerComponent: 8, bytesPerRow: 0,
+                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
 
-        // Bitmap contexts share the bottom-left origin, so only scale
         ctx.scaleBy(x: scale, y: scale)
-        ctx.setFillColor(.white)
-        ctx.fill(CGRect(origin: .zero, size: size))
+        if let background {
+            ctx.setFillColor(background)
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
         ctx.setShouldAntialias(true)
         ctx.setShouldSmoothFonts(true)
-        renderer.drawPage(page, in: ctx)
+        renderer.drawPage(0, in: ctx)
         return ctx.makeImage()
     }
 
-    static func pngData(for config: TimelineConfig, page: Int, scale: CGFloat = 2) -> Data? {
-        guard let image = pageImage(for: config, page: page, scale: scale) else { return nil }
+    /// PNG export: one continuous image, white background, title once.
+    static func writePNG(for config: TimelineConfig, to url: URL) throws {
+        guard let image = continuousImage(
+            for: config, theme: .light, background: CGColor.white)
+        else { throw ExportError.contextCreationFailed }
         let rep = NSBitmapImageRep(cgImage: image)
-        rep.size = TimelineRenderer.pageSize  // points, so the PNG reports 144 dpi
-        return rep.representation(using: .png, properties: [:])
-    }
-
-    /// Write PNG(s) for every page. Multi-page documents get -1, -2 ... suffixes.
-    static func writePNGs(for config: TimelineConfig, to url: URL) throws {
-        let renderer = TimelineRenderer(config: config)
-        let pageCount = renderer.pageCount
-
-        if pageCount == 1 {
-            guard let data = pngData(for: config, page: 0) else {
-                throw ExportError.contextCreationFailed
-            }
-            try data.write(to: url)
-            return
+        let renderer = TimelineRenderer(config: config, layout: .continuous)
+        rep.size = renderer.canvasSize  // points, so the PNG reports 144 dpi
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            throw ExportError.contextCreationFailed
         }
-
-        let base = url.deletingPathExtension()
-        for page in 0..<pageCount {
-            guard let data = pngData(for: config, page: page) else {
-                throw ExportError.contextCreationFailed
-            }
-            let pageURL = URL(fileURLWithPath: base.path + "-\(page + 1).png")
-            try data.write(to: pageURL)
-        }
+        try data.write(to: url)
     }
 }

@@ -17,17 +17,54 @@ struct TimelineRenderer {
         "#E84A8A",  // pink
     ]
 
-    static let colorBar = cg("#33333B")
-    static let colorTick = cg("#4C4C55")
-    static let colorTickMuted = cg("#B3B6BC")
-    static let colorDate = cg("#55555E")
-    static let colorDateMuted = cg("#A8ABB2")
-    static let colorWeekendBand = cg("#F1F2F5")
-    static let colorPastX = cg("#6E6E76")
-    static let colorDone = cg("#9A9AA2")
-    static let colorTitle = cg("#26262E")
-    static let colorSubtitle = cg("#8A8A93")
-    static let colorFooter = cg("#B8B8C0")
+    /// UI chrome colors; event colors stay the same in both themes.
+    struct Theme {
+        var bar: CGColor
+        var tick: CGColor
+        var tickMuted: CGColor
+        var date: CGColor
+        var dateMuted: CGColor
+        var weekendBand: CGColor
+        var pastX: CGColor
+        var done: CGColor
+        var title: CGColor
+        var subtitle: CGColor
+        var footer: CGColor
+
+        static let light = Theme(
+            bar: cg("#33333B"),
+            tick: cg("#4C4C55"),
+            tickMuted: cg("#B3B6BC"),
+            date: cg("#55555E"),
+            dateMuted: cg("#A8ABB2"),
+            weekendBand: cg("#F1F2F5"),
+            pastX: cg("#6E6E76"),
+            done: cg("#9A9AA2"),
+            title: cg("#26262E"),
+            subtitle: cg("#8A8A93"),
+            footer: cg("#B8B8C0"))
+
+        static let dark = Theme(
+            bar: cg("#C8C8D0"),
+            tick: cg("#9A9AA4"),
+            tickMuted: cg("#55555E"),
+            date: cg("#B8B8C2"),
+            dateMuted: cg("#6A6A74"),
+            weekendBand: cg("#2A2A31"),
+            pastX: cg("#8A8A94"),
+            done: cg("#6E6E78"),
+            title: cg("#E8E8EE"),
+            subtitle: cg("#8A8A93"),
+            footer: cg("#5A5A64"))
+    }
+
+    /// Paged reproduces the CLI's letter-landscape pages (PDF export).
+    /// Continuous lays every row on one tall canvas with the title once
+    /// (app preview and PNG export).
+    enum Layout {
+        case paged
+        case continuous
+    }
 
     static func cg(_ hex: String) -> CGColor {
         var value: UInt64 = 0
@@ -61,13 +98,15 @@ struct TimelineRenderer {
     let labelTextHeight: CGFloat = 12
 
     let config: TimelineConfig
+    let layout: Layout
+    let theme: Theme
     let startDay: Day
     let endDay: Day
     let totalDays: Int
     let maxDaysPerRow: Int
     let topMargin: CGFloat
     private let sortedEvents: [TimelineEvent]
-    private let eventColors: [UUID: CGColor]
+    private let eventColorMap: [UUID: CGColor]
     private let usHolidays: [Day: String]
 
     struct Placement {
@@ -94,10 +133,31 @@ struct TimelineRenderer {
     }
 
     let rows: [Row]
+    /// Page size for paged layout; full canvas size for continuous.
+    let canvasSize: CGSize
     var pageCount: Int { (rows.map(\.pageIndex).max() ?? 0) + 1 }
 
-    init(config: TimelineConfig) {
+    /// Default palette assignment, exposed so the editor can show each
+    /// event's effective color.
+    static func resolvedColorHex(for config: TimelineConfig) -> [UUID: String] {
+        let sorted = config.events.sorted { $0.start < $1.start }
+        var result: [UUID: String] = [:]
+        var paletteIndex = 0
+        for event in sorted {
+            if let hex = event.colorHex, !hex.isEmpty {
+                result[event.id] = hex
+            } else {
+                result[event.id] = eventColors[paletteIndex % eventColors.count]
+                paletteIndex += 1
+            }
+        }
+        return result
+    }
+
+    init(config: TimelineConfig, layout: Layout = .paged, theme: Theme = .light) {
         self.config = config
+        self.layout = layout
+        self.theme = theme
 
         let start = config.timelineStart ?? .today()
         var end = config.timelineEnd ?? start
@@ -115,25 +175,12 @@ struct TimelineRenderer {
         let usableWidth = Self.pageSize.width - leftMargin - rightMargin
         self.maxDaysPerRow = max(1, Int(usableWidth / dayWidth))
 
-        // Assign default colors in chronological order so adjacent events
-        // never share a color; explicit overrides are respected
-        let sorted = config.events.sorted { $0.start < $1.start }
-        var colors: [UUID: CGColor] = [:]
-        var paletteIndex = 0
-        for event in sorted {
-            if let hex = event.colorHex, !hex.isEmpty {
-                colors[event.id] = Self.cg(hex)
-            } else {
-                colors[event.id] =
-                    Self.cg(Self.eventColors[paletteIndex % Self.eventColors.count])
-                paletteIndex += 1
-            }
-        }
-        self.sortedEvents = sorted
-        self.eventColors = colors
+        let resolved = Self.resolvedColorHex(for: config)
+        self.eventColorMap = resolved.mapValues { Self.cg($0) }
+        self.sortedEvents = config.events.sorted { $0.start < $1.start }
         self.usHolidays = USHolidays.holidays(from: start, to: end)
 
-        // Split into rows and assign baselines/pages (mirrors generate())
+        // Split into rows
         var rowSpans: [(Day, Int)] = []
         var current = start
         var remaining = totalDays
@@ -144,41 +191,70 @@ struct TimelineRenderer {
             remaining -= days
         }
 
-        var built: [Row] = []
-        let pageTop = Self.pageSize.height - topMargin
-        var currentY: CGFloat?
-        var pageIndex = 0
+        // Per-row space needed above the baseline (driven by label stacking)
+        var gapsAbove: [CGFloat] = []
         for (rowDay, days) in rowSpans {
             var labelTop: CGFloat = 0
             _ = Self.layoutEvents(
-                forRow: rowDay, numDays: days, events: sorted,
+                forRow: rowDay, numDays: days, events: sortedEvents,
                 leftMargin: leftMargin, dayWidth: dayWidth,
                 rangeBaseOffset: rangeBaseOffset, rangeStackSpacing: rangeStackSpacing,
                 eventBaseOffset: eventBaseOffset, eventVerticalSpacing: eventVerticalSpacing,
                 maxEventHeight: maxEventHeight, labelFontSize: labelFontSize,
                 labelTextHeight: labelTextHeight, maxLabelTop: &labelTop)
             labelTop = max(labelTop, eventBaseOffset + 12)
-            let gapAbove = labelTop + 8
+            gapsAbove.append(labelTop + 8)
+        }
 
-            var y: CGFloat
-            if let existing = currentY {
-                y = existing - rowDepthBelow - gapAbove
-            } else {
-                y = pageTop - gapAbove
+        var built: [Row] = []
+        switch layout {
+        case .paged:
+            let pageTop = Self.pageSize.height - topMargin
+            var currentY: CGFloat?
+            var pageIndex = 0
+            for (index, (rowDay, days)) in rowSpans.enumerated() {
+                let gapAbove = gapsAbove[index]
+                var y: CGFloat
+                if let existing = currentY {
+                    y = existing - rowDepthBelow - gapAbove
+                } else {
+                    y = pageTop - gapAbove
+                }
+                if y < bottomMargin + rowDepthBelow {
+                    pageIndex += 1
+                    y = pageTop - gapAbove
+                }
+                built.append(
+                    Row(startDay: rowDay, numDays: days, baselineY: y, pageIndex: pageIndex))
+                currentY = y
             }
-            if y < bottomMargin + rowDepthBelow {
-                pageIndex += 1
-                y = pageTop - gapAbove
+            self.canvasSize = Self.pageSize
+
+        case .continuous:
+            // Accumulate offsets from the top, then flip once the total
+            // height is known
+            var offsets: [CGFloat] = []
+            var offsetFromTop: CGFloat = topMargin
+            for gapAbove in gapsAbove {
+                offsetFromTop += gapAbove
+                offsets.append(offsetFromTop)
+                offsetFromTop += rowDepthBelow
             }
-            built.append(Row(startDay: rowDay, numDays: days, baselineY: y, pageIndex: pageIndex))
-            currentY = y
+            let totalHeight = offsetFromTop + bottomMargin
+            for (index, (rowDay, days)) in rowSpans.enumerated() {
+                built.append(
+                    Row(
+                        startDay: rowDay, numDays: days,
+                        baselineY: totalHeight - offsets[index], pageIndex: 0))
+            }
+            self.canvasSize = CGSize(width: Self.pageSize.width, height: totalHeight)
         }
         self.rows = built
     }
 
     func color(for event: TimelineEvent) -> CGColor {
-        if event.done { return Self.colorDone }
-        return eventColors[event.id] ?? Self.cg(Self.eventColors[0])
+        if event.done { return theme.done }
+        return eventColorMap[event.id] ?? Self.cg(Self.eventColors[0])
     }
 
     // MARK: - Calendar helpers
@@ -376,7 +452,8 @@ struct TimelineRenderer {
 
     // MARK: - Drawing
 
-    /// Draw one page into a PDF-coordinate (bottom-left origin) context.
+    /// Draw one page (paged) or the whole canvas (continuous, page 0)
+    /// into a PDF-coordinate (bottom-left origin) context.
     func drawPage(_ pageIndex: Int, in ctx: CGContext) {
         drawHeader(in: ctx)
         for row in rows where row.pageIndex == pageIndex {
@@ -387,17 +464,17 @@ struct TimelineRenderer {
     }
 
     private func drawHeader(in ctx: CGContext) {
-        let pageWidth = Self.pageSize.width
+        let width = canvasSize.width
         if !config.title.isEmpty {
-            let titleY = Self.pageSize.height - baseTopMargin
+            let titleY = canvasSize.height - baseTopMargin
             Self.drawText(
-                config.title, at: CGPoint(x: pageWidth / 2, y: titleY),
-                font: Self.font("Helvetica-Bold", 18), color: Self.colorTitle,
+                config.title, at: CGPoint(x: width / 2, y: titleY),
+                font: Self.font("Helvetica-Bold", 18), color: theme.title,
                 align: .center, in: ctx)
             let subtitle = "\(monthDay(startDay)) – \(monthDay(endDay)), \(endDay.year)"
             Self.drawText(
-                subtitle, at: CGPoint(x: pageWidth / 2, y: titleY - 16),
-                font: Self.font("Helvetica", 9.5), color: Self.colorSubtitle,
+                subtitle, at: CGPoint(x: width / 2, y: titleY - 16),
+                font: Self.font("Helvetica", 9.5), color: theme.subtitle,
                 align: .center, in: ctx)
         }
 
@@ -405,8 +482,8 @@ struct TimelineRenderer {
         formatter.dateFormat = "MMM d, yyyy"
         Self.drawText(
             "Generated \(formatter.string(from: Date()))",
-            at: CGPoint(x: pageWidth - rightMargin, y: 28.8),
-            font: Self.font("Helvetica", 7), color: Self.colorFooter,
+            at: CGPoint(x: width - rightMargin, y: 28.8),
+            font: Self.font("Helvetica", 7), color: theme.footer,
             align: .right, in: ctx)
     }
 
@@ -425,7 +502,7 @@ struct TimelineRenderer {
         let bandBottom = y - 40
         let bandHeight: CGFloat = 54
 
-        // Merged gray bands for consecutive weekend/holiday days
+        // Merged bands for consecutive weekend/holiday days
         var i = 0
         while i < row.numDays {
             if isWeekendOrHoliday(row.startDay.shifted(days: i)) {
@@ -436,7 +513,7 @@ struct TimelineRenderer {
                 }
                 let bandX = startX + CGFloat(i) * dayWidth - dayWidth / 2
                 let bandWidth = CGFloat(j - i + 1) * dayWidth
-                ctx.setFillColor(Self.colorWeekendBand)
+                ctx.setFillColor(theme.weekendBand)
                 let path = CGPath(
                     roundedRect: CGRect(
                         x: bandX, y: bandBottom, width: bandWidth, height: bandHeight),
@@ -450,7 +527,7 @@ struct TimelineRenderer {
         }
 
         // Main timeline bar
-        ctx.setStrokeColor(Self.colorBar)
+        ctx.setStrokeColor(theme.bar)
         ctx.setLineWidth(2.5)
         ctx.setLineCap(.round)
         ctx.move(to: CGPoint(x: startX, y: y))
@@ -465,7 +542,7 @@ struct TimelineRenderer {
             let x = startX + CGFloat(i) * dayWidth
             let special = isWeekendOrHoliday(day)
 
-            ctx.setStrokeColor(special ? Self.colorTickMuted : Self.colorTick)
+            ctx.setStrokeColor(special ? theme.tickMuted : theme.tick)
             ctx.move(to: CGPoint(x: x, y: y - tickHeight / 2))
             ctx.addLine(to: CGPoint(x: x, y: y + tickHeight / 2))
             ctx.strokePath()
@@ -473,7 +550,7 @@ struct TimelineRenderer {
             Self.drawText(
                 day.shortLabel, at: CGPoint(x: x, y: y - tickHeight / 2 - 12),
                 font: Self.font("Helvetica", 8),
-                color: special ? Self.colorDateMuted : Self.colorDate,
+                color: special ? theme.dateMuted : theme.date,
                 align: .center, in: ctx)
         }
 
@@ -516,7 +593,7 @@ struct TimelineRenderer {
                 if centerX - nameWidth / 2 > lastLabelEnd + 4 {
                     Self.drawText(
                         name, at: CGPoint(x: centerX, y: y - 36),
-                        font: holidayFont, color: Self.colorSubtitle,
+                        font: holidayFont, color: theme.subtitle,
                         align: .center, in: ctx)
                     lastLabelEnd = centerX + nameWidth / 2
                 }
@@ -527,7 +604,7 @@ struct TimelineRenderer {
 
     private func drawPastDayMarkers(_ row: Row, in ctx: CGContext) {
         let today = Day.today()
-        ctx.setStrokeColor(Self.colorPastX)
+        ctx.setStrokeColor(theme.pastX)
         ctx.setLineWidth(1.3)
         for i in 0..<row.numDays {
             let day = row.startDay.shifted(days: i)
@@ -625,7 +702,7 @@ struct TimelineRenderer {
                 font: labelFont, color: eventColor, align: .left, in: ctx)
 
             if p.event.done {
-                ctx.setStrokeColor(Self.colorDone)
+                ctx.setStrokeColor(theme.done)
                 ctx.setLineWidth(1.2)
                 let strikeY = labelYAbs + labelTextHeight / 2 - 3
                 ctx.move(to: CGPoint(x: labelX, y: strikeY))

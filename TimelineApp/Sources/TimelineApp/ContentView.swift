@@ -45,13 +45,9 @@ struct ContentView: View {
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = suggestedName(extension: "png")
         panel.canCreateDirectories = true
-        let pages = TimelineRenderer(config: document.config).pageCount
-        if pages > 1 {
-            panel.message = "The timeline has \(pages) pages; they will be saved as separate numbered images."
-        }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try Exporter.writePNGs(for: document.config, to: url)
+            try Exporter.writePNG(for: document.config, to: url)
         } catch {
             presentError(error)
         }

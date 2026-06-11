@@ -13,7 +13,7 @@ enum Main {
                 let config = try ConfigYAML.parse(text)
                 let outputURL = URL(fileURLWithPath: args[3])
                 if outputURL.pathExtension.lowercased() == "png" {
-                    try Exporter.writePNGs(for: config, to: outputURL)
+                    try Exporter.writePNG(for: config, to: outputURL)
                 } else {
                     try Exporter.pdfData(for: config).write(to: outputURL)
                 }
