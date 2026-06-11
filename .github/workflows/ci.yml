@@ -6,34 +6,23 @@ on:
   pull_request:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+  build:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
+      - name: Build
+        run: cd TimelineApp && swift build
 
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+      - name: Render example timeline
+        run: |
+          TimelineApp/.build/debug/TimelineApp --render example.timeline example.pdf
+          TimelineApp/.build/debug/TimelineApp --render example.timeline example.png
 
-      - name: Lint
-        run: ruff check .
-
-      - name: Run tests
-        run: pytest -v
-
-      - name: Build example timeline
-        run: python timeline.py example_config.yaml -o example.pdf
-
-      - name: Upload example PDF
-        if: matrix.python-version == '3.13'
+      - name: Upload rendered example
         uses: actions/upload-artifact@v4
         with:
           name: example-timeline
-          path: example.pdf
+          path: |
+            example.pdf
+            example.png

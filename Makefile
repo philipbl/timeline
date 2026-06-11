@@ -1,27 +1,26 @@
+APP := build/Timeline.app
 
-PYTHON := $(shell if [ -x .venv/bin/python ]; then printf '%s' .venv/bin/python; else printf '%s' python3; fi)
-
-timeline.pdf: events.yaml timeline.py
-	$(PYTHON) timeline.py events.yaml
-
-.PHONY: test
-test:
-	$(PYTHON) -m pytest
-
-.PHONY: lint
-lint:
-	$(PYTHON) -m ruff check .
-
-# Native Mac app
 .PHONY: app
 app:
 	cd TimelineApp && swift build -c release
-	rm -rf build/Timeline.app
-	mkdir -p build/Timeline.app/Contents/MacOS
-	cp TimelineApp/.build/release/TimelineApp build/Timeline.app/Contents/MacOS/Timeline
-	cp TimelineApp/Info.plist build/Timeline.app/Contents/Info.plist
-	codesign --force -s - build/Timeline.app
+	rm -rf $(APP)
+	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
+	cp TimelineApp/.build/release/TimelineApp $(APP)/Contents/MacOS/Timeline
+	cp TimelineApp/Info.plist $(APP)/Contents/Info.plist
+	cp TimelineApp/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
+	codesign --force -s - $(APP)
 
 .PHONY: run-app
 run-app: app
-	open build/Timeline.app
+	open $(APP)
+
+.PHONY: icon
+icon:
+	cd TimelineApp && swift scripts/make_icon.swift /tmp/icon_1024.png
+	rm -rf /tmp/AppIcon.iconset && mkdir /tmp/AppIcon.iconset
+	for s in 16 32 128 256 512; do \
+		sips -z $$s $$s /tmp/icon_1024.png --out /tmp/AppIcon.iconset/icon_$${s}x$${s}.png >/dev/null; \
+		d=$$((s*2)); \
+		sips -z $$d $$d /tmp/icon_1024.png --out /tmp/AppIcon.iconset/icon_$${s}x$${s}@2x.png >/dev/null; \
+	done
+	iconutil -c icns /tmp/AppIcon.iconset -o TimelineApp/AppIcon.icns
