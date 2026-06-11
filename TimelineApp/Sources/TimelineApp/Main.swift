@@ -6,6 +6,15 @@ import SwiftUI
 enum Main {
     static func main() {
         let args = CommandLine.arguments
+        if args.contains("--self-test") {
+            #if DEBUG
+            exit(SelfTests.run())
+            #else
+            FileHandle.standardError.write(
+                Data("Self tests are only available in debug builds\n".utf8))
+            exit(1)
+            #endif
+        }
         // Headless mode for testing: Timeline --render in.yaml out.pdf|out.png
         if args.count >= 4, args[1] == "--render" {
             do {
@@ -35,9 +44,12 @@ enum Main {
 
 struct TimelineAppMain: App {
     var body: some Scene {
-        DocumentGroup(newDocument: TimelineDocument()) { file in
-            ContentView(document: file.$document)
+        DocumentGroup(newDocument: { TimelineDocument() }) { file in
+            ContentView(document: file.document)
         }
         .defaultSize(width: 1280, height: 760)
+        .commands {
+            TimelineCommands()
+        }
     }
 }

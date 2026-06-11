@@ -14,6 +14,9 @@ jobs:
       - name: Build
         run: cd TimelineApp && swift build
 
+      - name: Run tests
+        run: TimelineApp/.build/debug/TimelineApp --self-test
+
       - name: Render example timeline
         run: |
           TimelineApp/.build/debug/TimelineApp --render example.timeline example.pdf

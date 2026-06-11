@@ -37,9 +37,10 @@ enum Exporter {
     /// Scale chosen by the caller to match the current zoom level.
     static func continuousImage(
         for config: TimelineConfig, theme: TimelineRenderer.Theme,
-        background: CGColor? = nil, scale: CGFloat = 2
+        background: CGColor? = nil, scale: CGFloat = 2, showToday: Bool = false
     ) -> CGImage? {
-        let renderer = TimelineRenderer(config: config, layout: .continuous, theme: theme)
+        let renderer = TimelineRenderer(
+            config: config, layout: .continuous, theme: theme, showToday: showToday)
         let size = renderer.canvasSize
         let width = Int(size.width * scale)
         let height = Int(size.height * scale)

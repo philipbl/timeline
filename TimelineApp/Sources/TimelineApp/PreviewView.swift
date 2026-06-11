@@ -9,6 +9,7 @@ struct PreviewView: View {
     let config: TimelineConfig
 
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("showTodayMarker") private var showTodayMarker = true
     @State private var zoom: CGFloat = 1
     @State private var gestureBaseZoom: CGFloat?
 
@@ -34,7 +35,7 @@ struct PreviewView: View {
                     if let image = Exporter.continuousImage(
                         for: config, theme: theme,
                         background: TimelineRenderer.cg(canvasHex),
-                        scale: renderScale)
+                        scale: renderScale, showToday: showTodayMarker)
                     {
                         Image(decorative: image, scale: renderScale)
                             .resizable()

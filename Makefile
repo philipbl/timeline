@@ -14,6 +14,11 @@ app:
 run-app: app
 	open $(APP)
 
+.PHONY: test
+test:
+	cd TimelineApp && swift build
+	TimelineApp/.build/debug/TimelineApp --self-test
+
 .PHONY: icon
 icon:
 	cd TimelineApp && swift scripts/make_icon.swift /tmp/icon_1024.png

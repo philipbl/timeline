@@ -41,6 +41,7 @@ Requires Xcode command line tools (Swift 6).
 ```bash
 make app       # build build/Timeline.app
 make run-app   # build and launch
+make test      # run the self-test suite
 ```
 
 ## Documents

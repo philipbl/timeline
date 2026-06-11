@@ -1,16 +1,25 @@
 import AppKit
+import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @Binding var document: TimelineDocument
+    @ObservedObject var document: TimelineDocument
+    @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
+
+    /// All edits route through the document so they register undo.
+    private var configBinding: Binding<TimelineConfig> {
+        Binding(
+            get: { document.config },
+            set: { document.update($0, undoManager: undoManager) })
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             HSplitView {
                 if !isFocusMode {
-                    EditorView(config: $document.config)
+                    EditorView(config: configBinding)
                         .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
                 }
                 PreviewView(config: document.config)
@@ -34,14 +43,15 @@ struct ContentView: View {
         }
         .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
-        // The shortcut lives on one always-present hidden button; putting
-        // it on the toolbar button breaks it once the toolbar hides
-        .background(
-            Button("") { isFocusMode.toggle() }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-                .opacity(0)
-                .frame(width: 0, height: 0)
-        )
+        // Menu bar (File/View) drives these via FocusedValues; the menu
+        // owns the keyboard shortcuts so they survive toolbar hiding
+        .focusedSceneValue(
+            \.timelineActions,
+            TimelineActions(
+                exportPDF: exportPDF,
+                exportPNG: exportPNG,
+                printTimeline: printTimeline,
+                toggleFocus: { isFocusMode.toggle() }))
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -132,6 +142,25 @@ struct ContentView: View {
             try Exporter.writePNG(
                 for: document.config, to: url, scale: scale,
                 includeGenerated: generatedCheckbox.state == .on)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    /// Print the paged (paper) layout through the system print dialog.
+    private func printTimeline() {
+        do {
+            let includeGenerated = UserDefaults.standard.bool(
+                forKey: Self.includeGeneratedKey)
+            let data = try Exporter.pdfData(
+                for: document.config, includeGenerated: includeGenerated)
+            guard let pdf = PDFDocument(data: data) else { return }
+            let printInfo = NSPrintInfo()
+            printInfo.orientation = .landscape
+            guard let operation = pdf.printOperation(
+                for: printInfo, scalingMode: .pageScaleDownToFit, autoRotate: true)
+            else { return }
+            operation.run()
         } catch {
             presentError(error)
         }
