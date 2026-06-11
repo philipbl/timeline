@@ -61,6 +61,7 @@ struct TimelineRenderer {
         var title: CGColor
         var subtitle: CGColor
         var footer: CGColor
+        var today: CGColor
 
         static let light = Theme(
             bar: cg("#33333B"),
@@ -73,7 +74,8 @@ struct TimelineRenderer {
             done: cg("#9A9AA2"),
             title: cg("#26262E"),
             subtitle: cg("#8A8A93"),
-            footer: cg("#B8B8C0"))
+            footer: cg("#B8B8C0"),
+            today: cg("#C77D00"))
 
         static let dark = Theme(
             bar: cg("#C8C8D0"),
@@ -86,7 +88,8 @@ struct TimelineRenderer {
             done: cg("#6E6E78"),
             title: cg("#E8E8EE"),
             subtitle: cg("#8A8A93"),
-            footer: cg("#5A5A64"))
+            footer: cg("#5A5A64"),
+            today: cg("#E5A93D"))
     }
 
     /// Paged reproduces the CLI's letter-landscape pages (PDF export).
@@ -134,6 +137,7 @@ struct TimelineRenderer {
     let layout: Layout
     let theme: Theme
     let includeGenerated: Bool
+    let showToday: Bool
     let startDay: Day
     let endDay: Day
     let totalDays: Int
@@ -191,14 +195,19 @@ struct TimelineRenderer {
 
     init(
         config: TimelineConfig, layout: Layout = .paged, theme: Theme = .light,
-        includeGenerated: Bool = false
+        includeGenerated: Bool = false, showToday: Bool = false
     ) {
         self.config = config
         self.layout = layout
         self.theme = theme
         self.includeGenerated = includeGenerated
+        self.showToday = showToday
 
-        let start = config.timelineStart ?? .today()
+        // Without explicit bounds the timeline runs from the first event
+        // to the last; past-only documents would otherwise collapse to a
+        // single day starting today
+        let start =
+            config.timelineStart ?? config.events.map(\.start).min() ?? .today()
         var end = config.timelineEnd ?? start
         if config.timelineEnd == nil {
             for event in config.events {
@@ -661,6 +670,21 @@ struct TimelineRenderer {
                 }
             }
             i = j + 1
+        }
+
+        // Subtle vertical marker on today (preview only)
+        if showToday {
+            let offset = row.startDay.days(until: Day.today())
+            if offset >= 0 && offset < row.numDays {
+                let x = startX + CGFloat(offset) * dayWidth
+                ctx.setStrokeColor(theme.today.copy(alpha: 0.85)!)
+                ctx.setLineWidth(1.5)
+                ctx.setLineCap(.round)
+                ctx.move(to: CGPoint(x: x, y: y - 40))
+                ctx.addLine(to: CGPoint(x: x, y: y + 16))
+                ctx.strokePath()
+                ctx.setLineCap(.butt)
+            }
         }
     }
 

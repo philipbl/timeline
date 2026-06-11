@@ -1,17 +1,35 @@
 import AppKit
+import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @Binding var document: TimelineDocument
+    @ObservedObject var document: TimelineDocument
+    @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
+    @AppStorage("editorWidth") private var editorWidth: Double = 380
+
+    /// All edits route through the document so they register undo.
+    private var configBinding: Binding<TimelineConfig> {
+        Binding(
+            get: { document.config },
+            set: { document.update($0, undoManager: undoManager) })
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             HSplitView {
                 if !isFocusMode {
-                    EditorView(config: $document.config)
-                        .frame(minWidth: 330, idealWidth: 380, maxWidth: 520)
+                    EditorView(config: configBinding)
+                        .frame(minWidth: 330, idealWidth: editorWidth, maxWidth: 520)
+                        .background(
+                            // Remember the divider position across launches
+                            GeometryReader { geo in
+                                Color.clear.onChange(of: geo.size.width) {
+                                    _, width in
+                                    editorWidth = width
+                                }
+                            })
                 }
                 PreviewView(config: document.config)
                     .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
@@ -34,14 +52,15 @@ struct ContentView: View {
         }
         .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
-        // The shortcut lives on one always-present hidden button; putting
-        // it on the toolbar button breaks it once the toolbar hides
-        .background(
-            Button("") { isFocusMode.toggle() }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-                .opacity(0)
-                .frame(width: 0, height: 0)
-        )
+        // Menu bar (File/View) drives these via FocusedValues; the menu
+        // owns the keyboard shortcuts so they survive toolbar hiding
+        .focusedSceneValue(
+            \.timelineActions,
+            TimelineActions(
+                exportPDF: exportPDF,
+                exportPNG: exportPNG,
+                printTimeline: printTimeline,
+                toggleFocus: { isFocusMode.toggle() }))
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -72,6 +91,7 @@ struct ContentView: View {
 
     private static let includeGeneratedKey = "exportIncludeGenerated"
     private static let pngScaleIndexKey = "exportPNGScaleIndex"
+    private static let pngDarkKey = "exportPNGDark"
 
     private func exportPDF() {
         let defaults = UserDefaults.standard
@@ -116,22 +136,58 @@ struct ContentView: View {
         ])
         resolutionRow.orientation = .horizontal
 
+        let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        appearancePopup.addItems(withTitles: ["Light", "Dark"])
+        appearancePopup.selectItem(at: defaults.bool(forKey: Self.pngDarkKey) ? 1 : 0)
+        let appearanceRow = NSStackView(views: [
+            NSTextField(labelWithString: "Appearance:"), appearancePopup,
+        ])
+        appearanceRow.orientation = .horizontal
+
         let generatedCheckbox = NSButton(
             checkboxWithTitle: "Include generation date", target: nil, action: nil)
         generatedCheckbox.state =
             defaults.bool(forKey: Self.includeGeneratedKey) ? .on : .off
 
-        panel.accessoryView = accessoryStack(views: [resolutionRow, generatedCheckbox])
+        panel.accessoryView = accessoryStack(
+            views: [resolutionRow, appearanceRow, generatedCheckbox])
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let dark = appearancePopup.indexOfSelectedItem == 1
         defaults.set(generatedCheckbox.state == .on, forKey: Self.includeGeneratedKey)
         defaults.set(resolutionPopup.indexOfSelectedItem, forKey: Self.pngScaleIndexKey)
+        defaults.set(dark, forKey: Self.pngDarkKey)
         let scales: [CGFloat] = [1, 2, 4]
         let scale = scales[max(0, min(resolutionPopup.indexOfSelectedItem, 2))]
         do {
             try Exporter.writePNG(
                 for: document.config, to: url, scale: scale,
-                includeGenerated: generatedCheckbox.state == .on)
+                includeGenerated: generatedCheckbox.state == .on, dark: dark)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    /// Print the paged (paper) layout through the system print dialog.
+    private func printTimeline() {
+        do {
+            let includeGenerated = UserDefaults.standard.bool(
+                forKey: Self.includeGeneratedKey)
+            let data = try Exporter.pdfData(
+                for: document.config, includeGenerated: includeGenerated)
+            guard let pdf = PDFDocument(data: data) else { return }
+            let printInfo = NSPrintInfo()
+            printInfo.orientation = .landscape
+            // Zero margins + 1:1 scale so the printed page matches the
+            // exported PDF exactly (default printer margins shrink it)
+            printInfo.topMargin = 0
+            printInfo.bottomMargin = 0
+            printInfo.leftMargin = 0
+            printInfo.rightMargin = 0
+            guard let operation = pdf.printOperation(
+                for: printInfo, scalingMode: .pageScaleNone, autoRotate: true)
+            else { return }
+            operation.run()
         } catch {
             presentError(error)
         }

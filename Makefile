@@ -14,6 +14,18 @@ app:
 run-app: app
 	open $(APP)
 
+.PHONY: test
+test:
+	cd TimelineApp && swift build
+	TimelineApp/.build/debug/TimelineApp --self-test
+
+# README screenshots; also the golden images for CI's render check
+.PHONY: docs
+docs:
+	cd TimelineApp && swift build
+	TimelineApp/.build/debug/TimelineApp --render example.timeline docs/example.png
+	TimelineApp/.build/debug/TimelineApp --render example.timeline docs/example-dark.png --dark
+
 .PHONY: icon
 icon:
 	cd TimelineApp && swift scripts/make_icon.swift /tmp/icon_1024.png

@@ -14,10 +14,17 @@ jobs:
       - name: Build
         run: cd TimelineApp && swift build
 
+      - name: Run tests
+        run: TimelineApp/.build/debug/TimelineApp --self-test
+
       - name: Render example timeline
         run: |
           TimelineApp/.build/debug/TimelineApp --render example.timeline example.pdf
           TimelineApp/.build/debug/TimelineApp --render example.timeline example.png
+
+      - name: Golden image check
+        run: |
+          TimelineApp/.build/debug/TimelineApp --compare example.png docs/example.png 3
 
       - name: Upload rendered example
         uses: actions/upload-artifact@v4
