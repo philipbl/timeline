@@ -26,6 +26,8 @@ form, watch the timeline render live, and export to PDF or PNG.
 - **Done events** — struck through and grayed out
 - **Export** — paged PDF (US letter, landscape) or single PNG at up to
   288 dpi
+- **Finder integration** — custom document icon and Quick Look
+  previews for .timeline files (select one and press Space)
 
 ## Installing
 

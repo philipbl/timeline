@@ -31,6 +31,8 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Timeline Document</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>DocIcon</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -48,6 +50,8 @@
 			<string>com.philipbl.timeline</string>
 			<key>UTTypeDescription</key>
 			<string>Timeline Document</string>
+			<key>UTTypeIconFile</key>
+			<string>DocIcon</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.yaml</string>

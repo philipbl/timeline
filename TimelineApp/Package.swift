@@ -13,6 +13,19 @@ let package = Package(
             dependencies: ["Yams"],
             path: "Sources/TimelineApp",
             swiftSettings: [.swiftLanguageMode(.v5)]
-        )
+        ),
+        // Quick Look preview appex. Shares renderer sources via symlinks
+        // (SPM forbids one file in two targets); the entry point is the
+        // extension loader, not main.swift.
+        .executableTarget(
+            name: "TimelineQuickLook",
+            dependencies: ["Yams"],
+            path: "Sources/TimelineQuickLook",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                .linkedFramework("QuickLookUI"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+            ]
+        ),
     ]
 )
