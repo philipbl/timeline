@@ -417,6 +417,31 @@ enum SelfTests {
             let late = config.shiftingEvent(id: dot.id, part: .whole, by: 30)
             expect(late.events[0].start == day("2026-06-22"))
         }
+        test("dayAtPointMapsAcrossRows") {
+            // 30 days -> two rows of 22 and 8
+            let config = makeConfig(end: "2026-07-07", events: [point("A", "2026-06-10")])
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            expect(renderer.rows.count == 2)
+            let row1 = renderer.rows[0]
+            let row2 = renderer.rows[1]
+
+            // Third tick of row 1
+            expect(
+                renderer.day(
+                    at: CGPoint(
+                        x: renderer.leftMargin + 2 * renderer.dayWidth,
+                        y: row1.baselineY + 5)) == day("2026-06-10"))
+            // Second tick of row 2 (vertically nearest to row 2)
+            expect(
+                renderer.day(
+                    at: CGPoint(
+                        x: renderer.leftMargin + renderer.dayWidth,
+                        y: row2.baselineY - 5)) == day("2026-07-01"))
+            // Clamps beyond the short row's end
+            expect(
+                renderer.day(
+                    at: CGPoint(x: 5000, y: row2.baselineY)) == day("2026-07-07"))
+        }
         test("hitTestFindsBarEnds") {
             let bar = span("Bar", "2026-06-13", "2026-06-16")
             let config = makeConfig(end: "2026-06-22", events: [bar])

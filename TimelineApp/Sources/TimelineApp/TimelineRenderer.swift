@@ -581,6 +581,18 @@ struct TimelineRenderer {
         eventHit(at: point)?.id
     }
 
+    /// The day under a canvas point: nearest row by vertical distance,
+    /// nearest tick by horizontal, clamped to the row. Lets drags track
+    /// the pointer across rows instead of only sliding horizontally.
+    func day(at point: CGPoint) -> Day {
+        guard let row = rows.min(by: {
+            abs($0.baselineY - point.y) < abs($1.baselineY - point.y)
+        }) else { return startDay }
+        let index = Int(((point.x - leftMargin) / dayWidth).rounded())
+        let clamped = max(0, min(index, row.numDays - 1))
+        return row.startDay.shifted(days: clamped)
+    }
+
     // MARK: - Drawing
 
     /// Draw one page (paged) or the whole canvas (continuous, page 0)

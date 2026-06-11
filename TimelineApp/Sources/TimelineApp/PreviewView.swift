@@ -16,7 +16,8 @@ struct PreviewView: View {
     @AppStorage("showTodayMarker") private var showTodayMarker = true
     @State private var zoom: CGFloat = 1
     @State private var gestureBaseZoom: CGFloat?
-    @State private var dragTarget: (id: UUID, part: TimelineRenderer.EventHitPart)?
+    @State private var dragTarget:
+        (id: UUID, part: TimelineRenderer.EventHitPart, anchorDay: Day)?
     @State private var dragMissed = false
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.25...3
@@ -120,27 +121,37 @@ struct PreviewView: View {
     ) -> some Gesture {
         let scale = displayWidth / canvas.width
 
+        // Image coordinates are top-left; the canvas is bottom-left
+        func canvasPoint(_ location: CGPoint) -> CGPoint {
+            CGPoint(
+                x: location.x / scale,
+                y: canvas.height - location.y / scale)
+        }
+
+        // The event follows the pointer: delta = days between the day
+        // grabbed and the day under the pointer, so dragging to another
+        // row works the same as dragging sideways
+        func dayDelta(_ value: DragGesture.Value, anchor: Day) -> Int {
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            return anchor.days(until: renderer.day(at: canvasPoint(value.location)))
+        }
+
         return DragGesture(minimumDistance: 3)
             .onChanged { value in
                 guard onEventMoved != nil else { return }
                 if dragTarget == nil && !dragMissed {
-                    // Image coordinates are top-left; the canvas is
-                    // bottom-left — flip y
-                    let canvasPoint = CGPoint(
-                        x: value.startLocation.x / scale,
-                        y: canvas.height - value.startLocation.y / scale)
+                    let start = canvasPoint(value.startLocation)
                     let renderer = TimelineRenderer(config: config, layout: .continuous)
-                    if let hit = renderer.eventHit(at: canvasPoint) {
-                        dragTarget = hit
+                    if let hit = renderer.eventHit(at: start) {
+                        dragTarget = (hit.id, hit.part, renderer.day(at: start))
                     } else {
                         dragMissed = true
                     }
                 }
                 guard let target = dragTarget else { return }
-                let renderer = TimelineRenderer(config: config, layout: .continuous)
-                let dayDelta = Int(
-                    (value.translation.width / (renderer.dayWidth * scale)).rounded())
-                onEventMoved?(target.id, target.part, dayDelta, false)
+                onEventMoved?(
+                    target.id, target.part,
+                    dayDelta(value, anchor: target.anchorDay), false)
             }
             .onEnded { value in
                 defer {
@@ -148,10 +159,9 @@ struct PreviewView: View {
                     dragMissed = false
                 }
                 guard let target = dragTarget else { return }
-                let renderer = TimelineRenderer(config: config, layout: .continuous)
-                let dayDelta = Int(
-                    (value.translation.width / (renderer.dayWidth * scale)).rounded())
-                onEventMoved?(target.id, target.part, dayDelta, true)
+                onEventMoved?(
+                    target.id, target.part,
+                    dayDelta(value, anchor: target.anchorDay), true)
             }
     }
 
