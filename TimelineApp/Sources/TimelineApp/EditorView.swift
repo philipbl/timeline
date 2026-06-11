@@ -27,33 +27,7 @@ struct EditorView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .groupedRow(index: 2, count: 6)
-                HStack {
-                    Toggle(
-                        "Days per row",
-                        isOn: Binding(
-                            get: { config.daysPerRow != nil },
-                            set: { config.daysPerRow = $0 ? 22 : nil }))
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    if let daysPerRow = config.daysPerRow {
-                        Spacer()
-                        Stepper(
-                            value: Binding(
-                                get: { config.daysPerRow ?? 22 },
-                                set: { config.daysPerRow = $0 }),
-                            in: 5...60
-                        ) {
-                            Text("\(daysPerRow)")
-                                .monospacedDigit()
-                        }
-                    }
-                }
-                .groupedRow(index: 3, count: 6)
-                Toggle("Shade weekends & holidays", isOn: $config.shadeWeekends)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .groupedRow(index: 4, count: 6)
+                .groupedRow(index: 2, count: 5)
                 Picker(
                     "Colors",
                     selection: Binding(
@@ -64,14 +38,33 @@ struct EditorView: View {
                         })
                 ) {
                     ForEach(TimelineRenderer.palettes, id: \.name) { palette in
-                        HStack(spacing: 4) {
-                            Text(palette.name.capitalized)
-                        }
-                        .tag(palette.name)
+                        Text(palette.name.capitalized)
+                            .tag(palette.name)
                     }
                 }
                 .pickerStyle(.menu)
-                .groupedRow(index: 5, count: 6)
+                .groupedRow(index: 3, count: 5)
+                DisclosureGroup("Advanced") {
+                    HStack {
+                        Text("Days per row")
+                        Spacer()
+                        Stepper(
+                            value: Binding(
+                                get: { config.daysPerRow ?? 22 },
+                                set: { config.daysPerRow = $0 }),
+                            in: 5...60
+                        ) {
+                            Text("\(config.daysPerRow ?? 22)")
+                                .monospacedDigit()
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    Toggle("Shade weekends & holidays", isOn: $config.shadeWeekends)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                .groupedRow(index: 4, count: 5)
             }
 
             Section {
@@ -144,7 +137,7 @@ struct EditorView: View {
                     .labelStyle(.titleAndIcon)
                 }
             } footer: {
-                Text("US federal holidays and weekends are shaded automatically.")
+                Text("US federal holidays and weekends are shaded automatically, if the option is selected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
