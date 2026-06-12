@@ -98,18 +98,16 @@ struct EditorView: View {
             }
 
             Section {
-                ForEach($config.events) { $event in
+                ForEach(Array(config.events.enumerated()), id: \.element.id) { index, event in
                     EventRow(
-                        event: $event,
+                        event: $config.events[index],
                         resolvedColorHex: resolvedColors[event.id]
                             ?? TimelineRenderer.eventColors[0],
                         isExpanded: expansionBinding(for: event.id),
                         nameFocus: $focusedEventName,
                         onDelete: { deleteEvent(event.id) }
                     )
-                    .groupedRow(
-                        index: config.events.firstIndex { $0.id == event.id } ?? 0,
-                        count: config.events.count)
+                    .groupedRow(index: index, count: config.events.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             deleteEvent(event.id)
@@ -139,14 +137,11 @@ struct EditorView: View {
             }
 
             Section {
-                ForEach($config.customHolidays) { $holiday in
-                    HolidayRow(holiday: $holiday) {
+                ForEach(Array(config.customHolidays.enumerated()), id: \.element.id) { index, holiday in
+                    HolidayRow(holiday: $config.customHolidays[index]) {
                         config.customHolidays.removeAll { $0.id == holiday.id }
                     }
-                    .groupedRow(
-                        index: config.customHolidays.firstIndex { $0.id == holiday.id }
-                            ?? 0,
-                        count: config.customHolidays.count)
+                    .groupedRow(index: index, count: config.customHolidays.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             config.customHolidays.removeAll { $0.id == holiday.id }
