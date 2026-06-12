@@ -182,9 +182,15 @@ struct EditorView: View {
             }
             .onChange(of: revealEventID) {
                 guard let id = revealEventID else { return }
-                expandedEvents.insert(id)
-                withAnimation {
-                    scrollProxy.scrollTo(id, anchor: .center)
+                // Double-click toggles: open and scroll into view, or
+                // close if the row is already expanded
+                if expandedEvents.contains(id) {
+                    expandedEvents.remove(id)
+                } else {
+                    expandedEvents.insert(id)
+                    withAnimation {
+                        scrollProxy.scrollTo(id, anchor: .center)
+                    }
                 }
                 revealEventID = nil
             }
