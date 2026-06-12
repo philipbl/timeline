@@ -15,6 +15,8 @@ struct ContentView: View {
     /// becomes a single undo step on release.
     @State private var dragOriginalConfig: TimelineConfig?
     @State private var fileWatcher: FileWatcher?
+    /// Event to expand and scroll to in the editor (canvas double-click).
+    @State private var revealEventID: UUID?
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -26,9 +28,15 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             PersistentSplitView(sidebarCollapsed: isFocusMode) {
-                EditorView(config: configBinding)
+                EditorView(config: configBinding, revealEventID: $revealEventID)
             } detail: {
-                PreviewView(config: document.config, onEventMoved: moveEvent)
+                PreviewView(
+                    config: document.config,
+                    onEventMoved: moveEvent,
+                    onEventSelected: { id in
+                        isFocusMode = false  // need the sidebar to show it
+                        revealEventID = id
+                    })
             }
 
             // Exit button pinned to the true top-right corner of the

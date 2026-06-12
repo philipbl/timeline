@@ -2,6 +2,9 @@ import SwiftUI
 
 struct EditorView: View {
     @Binding var config: TimelineConfig
+    /// Set externally (canvas double-click) to expand an event's row and
+    /// scroll it into view; resets to nil once handled.
+    @Binding var revealEventID: UUID?
     @State private var expandedEvents: Set<UUID> = []
     @FocusState private var focusedEventName: UUID?
 
@@ -10,7 +13,8 @@ struct EditorView: View {
 
         // List (not Form) so .swipeActions works on the rows; grouped-form
         // look recreated with row backgrounds
-        List {
+        ScrollViewReader { scrollProxy in
+            List {
             Section("Timeline") {
                 TextField("Title", text: $config.title, prompt: Text("Untitled"))
                     .groupedRow(index: 0, count: 6)
@@ -120,6 +124,7 @@ struct EditorView: View {
                             Label("Delete Event", systemImage: "trash")
                         }
                     }
+                    .id(event.id)
                 }
             } header: {
                 HStack {
@@ -167,13 +172,22 @@ struct EditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-        .listStyle(.inset)
-        .listRowSeparator(.hidden)
-        .environment(\.defaultMinListRowHeight, 40)
-        .onAppear(perform: sortEvents)
-        .onChange(of: config.events.map(\.start)) {
-            sortEvents()
+            }
+            .listStyle(.inset)
+            .listRowSeparator(.hidden)
+            .environment(\.defaultMinListRowHeight, 40)
+            .onAppear(perform: sortEvents)
+            .onChange(of: config.events.map(\.start)) {
+                sortEvents()
+            }
+            .onChange(of: revealEventID) {
+                guard let id = revealEventID else { return }
+                expandedEvents.insert(id)
+                withAnimation {
+                    scrollProxy.scrollTo(id, anchor: .center)
+                }
+                revealEventID = nil
+            }
         }
     }
 

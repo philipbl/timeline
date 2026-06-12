@@ -11,6 +11,8 @@ struct PreviewView: View {
     /// being dragged, day delta from drag start, final). nil disables
     /// dragging.
     var onEventMoved: ((UUID, TimelineRenderer.EventHitPart, Int, Bool) -> Void)?
+    /// Called when an event is double-clicked.
+    var onEventSelected: ((UUID) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("showTodayMarker") private var showTodayMarker = true
@@ -50,6 +52,21 @@ struct PreviewView: View {
                             .frame(width: displayWidth)
                             .gesture(dragEventGesture(
                                 displayWidth: displayWidth, canvas: canvas))
+                            // Double-click an event to reveal it in the
+                            // editor; empty canvas resets the zoom
+                            .onTapGesture(count: 2) { location in
+                                let scale = displayWidth / canvas.width
+                                let point = CGPoint(
+                                    x: location.x / scale,
+                                    y: canvas.height - location.y / scale)
+                                let renderer = TimelineRenderer(
+                                    config: config, layout: .continuous)
+                                if let hit = renderer.eventHit(at: point) {
+                                    onEventSelected?(hit.id)
+                                } else {
+                                    withAnimation(.snappy) { zoom = 1 }
+                                }
+                            }
                             .onContinuousHover { phase in
                                 updateCursor(
                                     phase, displayWidth: displayWidth,
