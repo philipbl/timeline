@@ -75,7 +75,13 @@ struct PreviewView: View {
                             .padding(24)
                     }
                 }
-                .frame(minWidth: geo.size.width, minHeight: geo.size.height)
+                // Top-align so the canvas starts at the top of the
+                // window instead of floating centered; leftover vertical
+                // space (from preserving the canvas aspect ratio) collects
+                // at the bottom rather than splitting top and bottom
+                .frame(
+                    minWidth: geo.size.width, minHeight: geo.size.height,
+                    alignment: .top)
             }
         }
         .background(Color(hex: dark ? "#1B1B20" : "#FAFAFC"))
