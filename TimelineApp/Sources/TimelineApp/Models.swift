@@ -87,6 +87,8 @@ struct TimelineEvent: Identifiable, Equatable {
     var done: Bool = false
     /// Important events get a box around their label.
     var important: Bool = false
+    /// Optional note rendered in small gray text under the event label.
+    var notes: String = ""
     /// Explicit color override ("#RRGGBB"); nil means palette-assigned.
     var colorHex: String?
 

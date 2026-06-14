@@ -81,6 +81,7 @@ events:
   - name: "Big Deadline"
     start: "2026-06-18"
     important: true            # boxed label
+    notes: "submit by 5pm"     # small gray line under the label
   - name: "Finished Task"
     start: "2026-06-09"
     done: true

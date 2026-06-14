@@ -132,6 +132,8 @@ struct TimelineRenderer {
     let rowDepthBelow: CGFloat = 52
     let labelFontSize: CGFloat = 9
     let labelTextHeight: CGFloat = 12
+    static let noteFontSize: CGFloat = 7
+    static let noteLineHeight: CGFloat = 10
 
     let config: TimelineConfig
     let layout: Layout
@@ -403,6 +405,8 @@ struct TimelineRenderer {
         let startX = leftMargin
         let barEndX = startX + CGFloat(numDays - 1) * dayWidth
         let labelFont = font("Helvetica-Bold", labelFontSize)
+        let noteFont = font("Helvetica", Self.noteFontSize)
+        let noteLineHeight = Self.noteLineHeight
 
         var occupiedBoxes: [CGRect] = []
         var occupiedRanges: [(CGFloat, CGFloat, CGFloat)] = []
@@ -486,6 +490,14 @@ struct TimelineRenderer {
                 placements[index].isRange
                 ? placements[index].lineYOffset - rangeBaseOffset : 0
             let textWidth = Self.textWidth(event.name, font: labelFont)
+            // A note is a second, smaller line drawn below the label
+            // (toward the marker); reserve its width and the extra height
+            // beneath the label so neighbors keep clear of it
+            let noteExtra = event.notes.isEmpty ? 0 : noteLineHeight
+            let noteWidth =
+                event.notes.isEmpty
+                ? 0 : Self.textWidth(event.notes, font: noteFont)
+            let boxWidth = max(textWidth, noteWidth)
             var yOffset = eventBaseOffset + stackExtra
 
             for _ in 0..<20 {
@@ -494,8 +506,8 @@ struct TimelineRenderer {
                     break
                 }
                 let rect = CGRect(
-                    x: markerX - textWidth / 2, y: yOffset,
-                    width: textWidth, height: labelTextHeight)
+                    x: markerX - boxWidth / 2, y: yOffset - noteExtra,
+                    width: boxWidth, height: labelTextHeight + noteExtra)
                 if !overlapsExisting(rect) { break }
                 yOffset += eventVerticalSpacing
             }
@@ -505,8 +517,8 @@ struct TimelineRenderer {
             placements[index].textWidth = textWidth
             occupiedBoxes.append(
                 CGRect(
-                    x: markerX - textWidth / 2, y: yOffset,
-                    width: textWidth, height: labelTextHeight))
+                    x: markerX - boxWidth / 2, y: yOffset - noteExtra,
+                    width: boxWidth, height: labelTextHeight + noteExtra))
             maxLabelTop = max(maxLabelTop, yOffset + labelTextHeight)
         }
 
@@ -894,6 +906,15 @@ struct TimelineRenderer {
                 ctx.move(to: CGPoint(x: labelX, y: strikeY))
                 ctx.addLine(to: CGPoint(x: labelX + p.textWidth, y: strikeY))
                 ctx.strokePath()
+            }
+
+            // Note: a small gray line under the label, centered on the marker
+            if !p.event.notes.isEmpty {
+                Self.drawText(
+                    p.event.notes,
+                    at: CGPoint(x: p.markerX, y: labelYAbs - Self.noteLineHeight),
+                    font: Self.font("Helvetica", Self.noteFontSize),
+                    color: theme.subtitle, align: .center, in: ctx)
             }
         }
     }

@@ -111,6 +111,7 @@ enum SelfTests {
             config.shadeHolidays = false
             config.events[0].done = true
             config.events[0].important = true
+            config.events[0].notes = "bring the slides"
             config.events[1].colorHex = "#123456"
             config.customHolidays = [
                 CustomHoliday(
@@ -129,6 +130,7 @@ enum SelfTests {
             expect(parsed.customPalette == ["#D62828", "#003049"])
             expect(parsed.events.map(\.name) == ["Dot", "Range"])
             expect(parsed.events[0].done && parsed.events[0].important)
+            expect(parsed.events[0].notes == "bring the slides")
             expect(parsed.events[1].colorHex == "#123456")
             expect(parsed.customHolidays.first?.name == "Retreat")
             expect(parsed.customHolidays.first?.end == day("2026-06-16"))

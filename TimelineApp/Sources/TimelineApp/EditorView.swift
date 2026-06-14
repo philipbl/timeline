@@ -468,6 +468,12 @@ struct EventRow: View {
             Toggle("Important", isOn: $event.important)
                 .toggleStyle(.switch)
                 .controlSize(.small)
+
+            TextField(
+                "Notes", text: $event.notes,
+                prompt: Text("Notes (shown in gray on the timeline)"),
+                axis: .vertical)
+                .lineLimit(1...3)
         } label: {
             HStack {
                 colorDot

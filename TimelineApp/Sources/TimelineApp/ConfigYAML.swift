@@ -68,6 +68,7 @@ enum ConfigYAML {
             event.end = try dict["end"].map(parseDay)
             event.done = dict["done"] as? Bool ?? false
             event.important = dict["important"] as? Bool ?? false
+            event.notes = dict["notes"] as? String ?? ""
             event.colorHex = dict["color"] as? String
             config.events.append(event)
         }
@@ -150,6 +151,9 @@ enum ConfigYAML {
             }
             if event.important {
                 lines.append("    important: true")
+            }
+            if !event.notes.isEmpty {
+                lines.append("    notes: \(quote(event.notes))")
             }
             if let color = event.colorHex {
                 lines.append("    color: \"\(color)\"")
