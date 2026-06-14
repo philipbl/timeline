@@ -116,6 +116,12 @@ struct EditorView: View {
                         }
                     }
                     .contextMenu {
+                        Button {
+                            duplicateEvent(event.id)
+                        } label: {
+                            Label("Duplicate Event", systemImage: "doc.on.doc")
+                        }
+
                         Button(role: .destructive) {
                             deleteEvent(event.id)
                         } label: {
@@ -224,6 +230,24 @@ struct EditorView: View {
     private func deleteEvent(_ id: UUID) {
         config.events.removeAll { $0.id == id }
         expandedEvents.remove(id)
+    }
+
+    private func duplicateEvent(_ id: UUID) {
+        guard let original = config.events.first(where: { $0.id == id }) else { return }
+
+        var copy = original
+        copy.id = UUID()
+
+        // Keep the list chronological when inserting duplicates.
+        let index = config.events.firstIndex { copy.start < $0.start }
+            ?? config.events.endIndex
+        config.events.insert(copy, at: index)
+        expandedEvents.insert(copy.id)
+
+        // Focus the duplicated row's name field once inserted.
+        DispatchQueue.main.async {
+            focusedEventName = copy.id
+        }
     }
 
     private func expansionBinding(for id: UUID) -> Binding<Bool> {
