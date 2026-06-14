@@ -98,16 +98,21 @@ struct EditorView: View {
             }
 
             Section {
-                ForEach(Array(config.events.enumerated()), id: \.element.id) { index, event in
+                // Binding-based ForEach (idiomatic and delete-safe); the
+                // row's scroll identity is its element id, so no explicit
+                // .id() — that was what broke delete diffing before
+                ForEach($config.events) { $event in
                     EventRow(
-                        event: $config.events[index],
+                        event: $event,
                         resolvedColorHex: resolvedColors[event.id]
                             ?? TimelineRenderer.eventColors[0],
                         isExpanded: expansionBinding(for: event.id),
                         nameFocus: $focusedEventName,
                         onDelete: { deleteEvent(event.id) }
                     )
-                    .groupedRow(index: index, count: config.events.count)
+                    .groupedRow(
+                        index: config.events.firstIndex { $0.id == event.id } ?? 0,
+                        count: config.events.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             deleteEvent(event.id)
@@ -128,12 +133,22 @@ struct EditorView: View {
                             Label("Delete Event", systemImage: "trash")
                         }
                     }
-                    .id(event.id)
                 }
             } header: {
                 HStack {
                     Text("Events")
                     Spacer()
+                    if !config.events.isEmpty {
+                        Button(action: toggleCollapseAll) {
+                            Label(
+                                allCollapsed ? "Expand All" : "Collapse All",
+                                systemImage: allCollapsed
+                                    ? "chevron.down" : "chevron.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .labelStyle(.iconOnly)
+                        .help(allCollapsed ? "Expand all events" : "Collapse all events")
+                    }
                     Button(action: addEvent) {
                         Label("Add Event", systemImage: "plus")
                     }
@@ -143,16 +158,32 @@ struct EditorView: View {
             }
 
             Section {
-                ForEach(Array(config.customHolidays.enumerated()), id: \.element.id) { index, holiday in
-                    HolidayRow(holiday: $config.customHolidays[index]) {
-                        config.customHolidays.removeAll { $0.id == holiday.id }
+                ForEach($config.customHolidays) { $holiday in
+                    HolidayRow(holiday: $holiday) {
+                        deleteHoliday(holiday.id)
                     }
-                    .groupedRow(index: index, count: config.customHolidays.count)
+                    .groupedRow(
+                        index: config.customHolidays.firstIndex { $0.id == holiday.id }
+                            ?? 0,
+                        count: config.customHolidays.count)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
-                            config.customHolidays.removeAll { $0.id == holiday.id }
+                            deleteHoliday(holiday.id)
                         } label: {
                             Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    .contextMenu {
+                        Button {
+                            duplicateHoliday(holiday.id)
+                        } label: {
+                            Label("Duplicate Holiday", systemImage: "doc.on.doc")
+                        }
+
+                        Button(role: .destructive) {
+                            deleteHoliday(holiday.id)
+                        } label: {
+                            Label("Delete Holiday", systemImage: "trash")
                         }
                     }
                 }
@@ -247,6 +278,33 @@ struct EditorView: View {
         // Focus the duplicated row's name field once inserted.
         DispatchQueue.main.async {
             focusedEventName = copy.id
+        }
+    }
+
+    private func deleteHoliday(_ id: UUID) {
+        config.customHolidays.removeAll { $0.id == id }
+    }
+
+    private func duplicateHoliday(_ id: UUID) {
+        guard let original = config.customHolidays.first(where: { $0.id == id })
+        else { return }
+        var copy = original
+        copy.id = UUID()
+        let index = config.customHolidays.firstIndex { copy.start < $0.start }
+            ?? config.customHolidays.endIndex
+        config.customHolidays.insert(copy, at: index)
+    }
+
+    /// True when no event rows are expanded.
+    private var allCollapsed: Bool {
+        config.events.allSatisfy { !expandedEvents.contains($0.id) }
+    }
+
+    private func toggleCollapseAll() {
+        if allCollapsed {
+            expandedEvents = Set(config.events.map(\.id))
+        } else {
+            expandedEvents.removeAll()
         }
     }
 
