@@ -305,7 +305,16 @@ struct TimelineRenderer {
                         startDay: rowDay, numDays: days,
                         baselineY: totalHeight - offsets[index], pageIndex: 0))
             }
-            self.canvasSize = CGSize(width: Self.pageSize.width, height: totalHeight)
+            // Width snug to the widest row so the content is centered with
+            // equal margins — the fixed page width left extra slack on the
+            // right (a 22-day row spans 630pt but the page is 792pt wide)
+            let dw = dayWidth
+            let widestSpan = rowSpans.map {
+                CGFloat($0.1 - 1) * dw
+            }.max() ?? 0
+            let contentWidth = leftMargin + widestSpan + rightMargin
+            self.canvasSize = CGSize(
+                width: max(contentWidth, 200), height: totalHeight)
         }
         self.rows = built
     }
