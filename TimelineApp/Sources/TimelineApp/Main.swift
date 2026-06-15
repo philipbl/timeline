@@ -58,6 +58,10 @@ enum Main {
             exit(difference <= threshold ? 0 : 1)
         }
 
+        // Disable macOS's built-in window restoration so it doesn't
+        // double up with (or fight) our own restore in AppDelegate.
+        UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
+
         TimelineAppMain.main()
     }
 }
@@ -71,16 +75,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Suppress the automatic launch Open panel — we restore the previous
+    /// documents instead. Without this the panel flashes on screen before
+    /// our restore runs. After launch, normal behavior resumes.
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        !didHandleLaunch
+    }
+
+    /// Dock-icon click with no windows open shows the Open panel.
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication, hasVisibleWindows flag: Bool
+    ) -> Bool {
+        if !flag { NSDocumentController.shared.openDocument(nil) }
+        return true
+    }
+
     /// Reopen the documents (and window frames) that were open at last
     /// quit. macOS's built-in restoration doesn't fire reliably for this
     /// ad-hoc-signed bundle, so we persist it ourselves.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        DispatchQueue.main.async { self.restoreOpenDocuments() }
+        DispatchQueue.main.async {
+            defer { self.didHandleLaunch = true }
+            // A file double-click or deep link already opened a document
+            let alreadyOpen = NSDocumentController.shared.documents.contains {
+                $0.fileURL != nil
+            }
+            if alreadyOpen { return }
+            if self.restoreOpenDocuments() { return }
+            // Nothing to restore — show the Open panel, as on a first run
+            NSDocumentController.shared.openDocument(nil)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         saveOpenDocuments()
     }
+
+    private var didHandleLaunch = false
 
     private func saveOpenDocuments() {
         let entries: [[String: String]] =
@@ -93,23 +124,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(entries, forKey: Self.restoreKey)
     }
 
-    private func restoreOpenDocuments() {
-        // Don't override a document opened by a file double-click, a
-        // deep link, or the system at launch.
-        let alreadyOpen = NSDocumentController.shared.documents.contains {
-            $0.fileURL != nil
-        }
-        guard !alreadyOpen,
-              let entries = UserDefaults.standard.array(forKey: Self.restoreKey)
-                  as? [[String: String]],
-              !entries.isEmpty
-        else { return }
+    /// Reopens previously open documents. Returns true if it opened any.
+    @discardableResult
+    private func restoreOpenDocuments() -> Bool {
+        let paths = (UserDefaults.standard.array(forKey: Self.restoreKey)
+            as? [[String: String]] ?? [])
+            .filter {
+                guard let path = $0["path"] else { return false }
+                return FileManager.default.fileExists(atPath: path)
+            }
+        guard !paths.isEmpty else { return false }
 
         let controller = NSDocumentController.shared
-        for entry in entries {
-            guard let path = entry["path"] else { continue }
-            let url = URL(fileURLWithPath: path)
-            guard FileManager.default.fileExists(atPath: path) else { continue }
+        for entry in paths {
+            let url = URL(fileURLWithPath: entry["path"]!)
             controller.openDocument(withContentsOf: url, display: true) {
                 document, _, _ in
                 if let frame = entry["frame"],
@@ -118,11 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-
-        // Dismiss the launch "Open" panel if it appeared
-        for window in NSApp.windows where window is NSOpenPanel {
-            window.close()
-        }
+        return true
     }
 }
 
