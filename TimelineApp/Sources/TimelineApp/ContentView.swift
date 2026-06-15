@@ -17,8 +17,12 @@ struct ContentView: View {
     /// becomes a single undo step on release.
     @State private var dragOriginalConfig: TimelineConfig?
     @State private var fileWatcher: FileWatcher?
-    /// Event to expand and scroll to in the editor (canvas double-click).
-    @State private var revealEventID: UUID?
+    /// Event currently open in the editor popover (nil = closed).
+    @State private var editingEventID: UUID?
+    /// True while the open editor is for a freshly added event, so an
+    /// empty cancel removes it.
+    @State private var isNewEvent = false
+    @State private var showSettings = false
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -38,39 +42,55 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            PersistentSplitView(sidebarCollapsed: isFocusMode) {
-                EditorView(config: configBinding, revealEventID: $revealEventID)
-            } detail: {
-                PreviewView(
-                    config: document.config,
-                    onEventMoved: moveEvent,
-                    onEventSelected: { id in
-                        isFocusMode = false  // need the sidebar to show it
-                        revealEventID = id
-                    },
-                    zoom: $zoom)
-            }
+        ZStack(alignment: .bottomTrailing) {
+            PreviewView(
+                config: document.config,
+                onEventMoved: moveEvent,
+                editingEventID: $editingEventID,
+                isNewEvent: $isNewEvent,
+                eventBinding: eventBinding,
+                onDeleteEvent: deleteEvent,
+                onCloseEditor: closeEditor,
+                // Relative phrases ("next Friday") resolve against today,
+                // not the timeline's start date
+                referenceDay: .today(),
+                zoom: $zoom)
 
-            // Exit button pinned to the true top-right corner of the
-            // window (the ZStack ignores the hidden title bar's safe area)
+            // Bottom-right add button (Things/Fantastical style). The
+            // new-event editor anchors here at the button; editing an
+            // existing event anchors on the canvas (in PreviewView).
+            if !isFocusMode {
+                Button(action: startNewEvent) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 52, height: 52)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+                .padding(20)
+                .help("Add an event")
+                .popover(isPresented: newEventPresented, arrowEdge: .trailing) {
+                    newEventEditor
+                }
+            }
+        }
+        // Focus-mode exit button at the true top-right corner
+        .overlay(alignment: .topTrailing) {
             if isFocusMode {
-                Button {
-                    isFocusMode = false
-                } label: {
+                Button { isFocusMode = false } label: {
                     Image(systemName: "arrow.down.right.and.arrow.up.left")
                 }
                 .buttonStyle(.borderless)
                 .padding(8)
                 .glassChrome(in: Circle())
                 .padding(12)
-                .help("Show the sidebar and toolbar (⇧⌘F)")
+                .help("Exit focus mode (⇧⌘F)")
             }
         }
         .ignoresSafeArea(.container, edges: isFocusMode ? .top : [])
         .toolbar(isFocusMode ? .hidden : .automatic, for: .windowToolbar)
-        // Menu bar (File/View) drives these via FocusedValues; the menu
-        // owns the keyboard shortcuts so they survive toolbar hiding
         .focusedSceneValue(
             \.timelineActions,
             TimelineActions(
@@ -92,14 +112,19 @@ struct ContentView: View {
         .onChange(of: isFocusMode) { saveWindowState() }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    isFocusMode = true
-                } label: {
-                    Label(
-                        "Focus",
-                        systemImage: "arrow.up.left.and.arrow.down.right")
+                Button { showSettings.toggle() } label: {
+                    Label("Timeline Settings", systemImage: "slider.horizontal.3")
                 }
-                .help("Hide the sidebar and toolbar (⇧⌘F)")
+                .help("Timeline settings")
+                .popover(isPresented: $showSettings, arrowEdge: .bottom) {
+                    TimelineSettings(config: configBinding)
+                }
+
+                Button { isFocusMode = true } label: {
+                    Label(
+                        "Focus", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .help("Focus mode — hide the chrome (⇧⌘F)")
 
                 Button(action: exportPDF) {
                     Label("Export PDF", systemImage: "doc.richtext")
@@ -112,6 +137,87 @@ struct ContentView: View {
                 .help("Export the timeline as a PNG image")
             }
         }
+    }
+
+    // MARK: - Event editor
+
+    /// The new-event editor (anchored to the + button) is shown while a
+    /// freshly added event is open.
+    private var newEventPresented: Binding<Bool> {
+        Binding(
+            get: { isNewEvent && editingEventID != nil },
+            set: { if !$0 { closeEditor() } })
+    }
+
+    @ViewBuilder private var newEventEditor: some View {
+        if let id = editingEventID, let binding = eventBinding(id) {
+            EventEditor(
+                event: binding,
+                onDelete: { deleteEvent(id) },
+                onClose: { closeEditor() },
+                // Escape on a new event discards it entirely
+                onCancel: { deleteEvent(id) },
+                referenceDay: .today(),
+                showQuickAdd: true,
+                // Until the event is named it has no palette slot, so predict
+                // the color it will get from its start date instead of red.
+                resolvedColorHex: TimelineRenderer.resolvedColorHex(
+                    for: document.config)[id]
+                    ?? TimelineRenderer.predictedColorHex(
+                        for: document.config, start: binding.wrappedValue.start))
+        }
+    }
+
+    /// A binding to the event with `id`, sort-safe (looks up by id, not
+    /// index, and re-sorts on write).
+    private func eventBinding(_ id: UUID) -> Binding<TimelineEvent>? {
+        guard document.config.events.contains(where: { $0.id == id }) else {
+            return nil
+        }
+        return Binding(
+            get: {
+                document.config.events.first { $0.id == id } ?? TimelineEvent()
+            },
+            set: { newValue in
+                var config = document.config
+                guard let index = config.events.firstIndex(where: { $0.id == id })
+                else { return }
+                config.events[index] = newValue
+                config.events.sort { $0.start < $1.start }
+                document.update(config, undoManager: undoManager)
+            })
+    }
+
+    private func startNewEvent() {
+        var start = Day.today()
+        if let lower = document.config.timelineStart, start < lower { start = lower }
+        if let upper = document.config.timelineEnd, upper < start { start = upper }
+        var config = document.config
+        let event = TimelineEvent(name: "", start: start)
+        let index = config.events.firstIndex { event.start < $0.start }
+            ?? config.events.endIndex
+        config.events.insert(event, at: index)
+        document.update(config, undoManager: undoManager)
+        isNewEvent = true
+        editingEventID = event.id
+    }
+
+    private func closeEditor() {
+        // A new event left blank is treated as a cancel.
+        if isNewEvent, let id = editingEventID,
+           let event = document.config.events.first(where: { $0.id == id }),
+           event.name.trimmingCharacters(in: .whitespaces).isEmpty {
+            deleteEvent(id)
+        }
+        editingEventID = nil
+        isNewEvent = false
+    }
+
+    private func deleteEvent(_ id: UUID) {
+        document.update(
+            document.config.removingEvent(id: id), undoManager: undoManager)
+        editingEventID = nil
+        isNewEvent = false
     }
 
     // Save-panel accessories use plain AppKit controls; SwiftUI hosting
