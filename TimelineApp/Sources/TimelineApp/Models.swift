@@ -166,6 +166,27 @@ struct TimelineConfig: Equatable {
         return copy
     }
 
+    /// A copy with the event removed; a no-op if the id isn't present.
+    func removingEvent(id: UUID) -> TimelineConfig {
+        var copy = self
+        copy.events.removeAll { $0.id == id }
+        return copy
+    }
+
+    /// A copy with a duplicate of the event (fresh id), inserted in
+    /// chronological order. Returns the copy and the new id, or nil if
+    /// the source id isn't present.
+    func duplicatingEvent(id: UUID) -> (config: TimelineConfig, newID: UUID)? {
+        guard let original = events.first(where: { $0.id == id }) else { return nil }
+        var copy = original
+        copy.id = UUID()
+        var result = self
+        let index = result.events.firstIndex { copy.start < $0.start }
+            ?? result.events.endIndex
+        result.events.insert(copy, at: index)
+        return (result, copy.id)
+    }
+
     static func starter() -> TimelineConfig {
         var config = TimelineConfig()
         config.title = "Timeline"

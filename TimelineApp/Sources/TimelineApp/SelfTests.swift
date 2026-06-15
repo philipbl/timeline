@@ -459,6 +459,34 @@ enum SelfTests {
                     == .whole)
         }
 
+        // Event delete / duplicate (the data path behind the editor rows;
+        // the original delete bug was SwiftUI view diffing, not reachable
+        // headlessly, but the mutation semantics are locked down here)
+        test("removingEventByID") {
+            let a = point("A", "2026-06-10")
+            let b = point("B", "2026-06-12")
+            let config = makeConfig(events: [a, b])
+            expect(config.removingEvent(id: a.id).events.map(\.name) == ["B"])
+            // removing a missing id is a no-op
+            expect(config.removingEvent(id: UUID()).events.count == 2)
+        }
+        test("duplicatingEventInsertsChronologicallyWithNewID") {
+            let a = span("Trip", "2026-06-15", "2026-06-18")
+            let later = point("Later", "2026-06-20")
+            let config = makeConfig(events: [a, later])
+            let result = config.duplicatingEvent(id: a.id)
+            expect(result != nil)
+            let after = result!.config
+            expect(after.events.count == 3)
+            expect(result!.newID != a.id)
+            // duplicate keeps content and lands next to the original (index 1)
+            let dup = after.events.first { $0.id == result!.newID }!
+            expect(dup.name == "Trip" && dup.start == a.start && dup.end == a.end)
+            expect(after.events.map(\.name) == ["Trip", "Trip", "Later"])
+            // duplicating a missing id returns nil
+            expect(config.duplicatingEvent(id: UUID()) == nil)
+        }
+
         // MCP server
         test("mcpInitializeAndToolsList") {
             let initResponse = MCPServer.handle([
