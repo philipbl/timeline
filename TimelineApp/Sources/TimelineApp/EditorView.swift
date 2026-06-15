@@ -136,19 +136,17 @@ struct EditorView: View {
                 }
             } header: {
                 HStack {
-                    Text("Events")
-                    Spacer()
                     if !config.events.isEmpty {
                         Button(action: toggleCollapseAll) {
-                            Label(
-                                allCollapsed ? "Expand All" : "Collapse All",
-                                systemImage: allCollapsed
-                                    ? "chevron.down" : "chevron.up")
+                            Image(
+                                systemName: allCollapsed
+                                    ? "chevron.right" : "chevron.down")
                         }
                         .buttonStyle(.borderless)
-                        .labelStyle(.iconOnly)
                         .help(allCollapsed ? "Expand all events" : "Collapse all events")
                     }
+                    Text("Events")
+                    Spacer()
                     Button(action: addEvent) {
                         Label("Add Event", systemImage: "plus")
                     }
