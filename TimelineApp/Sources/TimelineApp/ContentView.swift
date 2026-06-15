@@ -10,15 +10,25 @@ struct ContentView: View {
     var fileURL: URL?
 
     @Environment(\.undoManager) private var undoManager
-    @State private var isFocusMode = false
+    @State private var isFocusMode: Bool
     /// Per-window zoom, owned here so it persists across relaunch.
-    @State private var zoom: CGFloat = 1
+    @State private var zoom: CGFloat
     /// Snapshot taken when a canvas drag starts, so the whole drag
     /// becomes a single undo step on release.
     @State private var dragOriginalConfig: TimelineConfig?
     @State private var fileWatcher: FileWatcher?
     /// Event to expand and scroll to in the editor (canvas double-click).
     @State private var revealEventID: UUID?
+
+    init(document: TimelineDocument, fileURL: URL?) {
+        _document = ObservedObject(initialValue: document)
+        self.fileURL = fileURL
+        // Seed focus/zoom from saved state at init so the first render is
+        // already correct — avoids the sidebar showing then sliding away.
+        let saved = Self.savedWindowState(for: fileURL)
+        _isFocusMode = State(initialValue: saved.focus)
+        _zoom = State(initialValue: saved.zoom)
+    }
 
     /// All edits route through the document so they register undo.
     private var configBinding: Binding<TimelineConfig> {
@@ -67,14 +77,16 @@ struct ContentView: View {
                 exportPDF: exportPDF,
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,
-                toggleFocus: { isFocusMode.toggle() }))
-        .onAppear {
-            startWatching()
-            loadWindowState()
-        }
+                toggleFocus: { isFocusMode.toggle() },
+                resetZoom: { withAnimation(.snappy) { zoom = 1 } }))
+        .onAppear { startWatching() }
         .onChange(of: fileURL) {
             startWatching()
-            loadWindowState()
+            // A document saved for the first time gains a URL; pick up its
+            // saved window state if any.
+            let saved = Self.savedWindowState(for: fileURL)
+            isFocusMode = saved.focus
+            zoom = saved.zoom
         }
         .onChange(of: zoom) { saveWindowState() }
         .onChange(of: isFocusMode) { saveWindowState() }
@@ -215,20 +227,21 @@ struct ContentView: View {
     }
 
     // Per-document window UI state (zoom + focus mode), keyed by path.
-    private func windowStateKey() -> String? {
-        fileURL.map { "windowState:\($0.path)" }
+    private static func windowStateKey(for url: URL?) -> String? {
+        url.map { "windowState:\($0.path)" }
     }
 
-    private func loadWindowState() {
-        guard let key = windowStateKey(),
+    /// Saved focus/zoom for a document, with defaults when absent.
+    static func savedWindowState(for url: URL?) -> (focus: Bool, zoom: CGFloat) {
+        guard let key = windowStateKey(for: url),
               let dict = UserDefaults.standard.dictionary(forKey: key)
-        else { return }
-        if let z = dict["zoom"] as? Double { zoom = CGFloat(z) }
-        if let f = dict["focus"] as? Bool { isFocusMode = f }
+        else { return (false, 1) }
+        return (dict["focus"] as? Bool ?? false,
+                CGFloat(dict["zoom"] as? Double ?? 1))
     }
 
     private func saveWindowState() {
-        guard let key = windowStateKey() else { return }
+        guard let key = Self.windowStateKey(for: fileURL) else { return }
         UserDefaults.standard.set(
             ["zoom": Double(zoom), "focus": isFocusMode], forKey: key)
     }

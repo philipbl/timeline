@@ -9,6 +9,12 @@ struct PersistentSplitView<Sidebar: View, Detail: View>: NSViewControllerReprese
     @ViewBuilder var sidebar: () -> Sidebar
     @ViewBuilder var detail: () -> Detail
 
+    final class Coordinator {
+        var isFirstUpdate = true
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSViewController(context: Context) -> NSSplitViewController {
         let controller = NSSplitViewController()
 
@@ -18,6 +24,8 @@ struct PersistentSplitView<Sidebar: View, Detail: View>: NSViewControllerReprese
         sidebarItem.maximumThickness = 520
         sidebarItem.canCollapse = true
         sidebarItem.holdingPriority = .init(260)  // detail flexes on resize
+        // Initial collapse state set without animation (restore case)
+        sidebarItem.isCollapsed = sidebarCollapsed
 
         let detailItem = NSSplitViewItem(
             viewController: NSHostingController(rootView: detail()))
@@ -42,8 +50,13 @@ struct PersistentSplitView<Sidebar: View, Detail: View>: NSViewControllerReprese
             as? NSHostingController<Detail> {
             detailHost.rootView = detail()
         }
-        if controller.splitViewItems[0].isCollapsed != sidebarCollapsed {
-            controller.splitViewItems[0].animator().isCollapsed = sidebarCollapsed
+        let item = controller.splitViewItems[0]
+        if context.coordinator.isFirstUpdate {
+            // First layout: match the restored state with no slide
+            item.isCollapsed = sidebarCollapsed
+            context.coordinator.isFirstUpdate = false
+        } else if item.isCollapsed != sidebarCollapsed {
+            item.animator().isCollapsed = sidebarCollapsed
         }
     }
 }

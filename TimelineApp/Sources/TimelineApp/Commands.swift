@@ -7,6 +7,7 @@ struct TimelineActions {
     var exportPNG: () -> Void
     var printTimeline: () -> Void
     var toggleFocus: () -> Void
+    var resetZoom: () -> Void
 }
 
 struct TimelineActionsKey: FocusedValueKey {
@@ -50,6 +51,9 @@ struct TimelineCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Toggle("Show Today Marker", isOn: $showTodayMarker)
+            Button("Actual Size") { actions?.resetZoom() }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled(actions == nil)
             Button("Toggle Focus Mode") { actions?.toggleFocus() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
                 .disabled(actions == nil)
