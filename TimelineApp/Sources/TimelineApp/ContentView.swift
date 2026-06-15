@@ -11,6 +11,8 @@ struct ContentView: View {
 
     @Environment(\.undoManager) private var undoManager
     @State private var isFocusMode = false
+    /// Per-window zoom, owned here so it persists across relaunch.
+    @State private var zoom: CGFloat = 1
     /// Snapshot taken when a canvas drag starts, so the whole drag
     /// becomes a single undo step on release.
     @State private var dragOriginalConfig: TimelineConfig?
@@ -36,7 +38,8 @@ struct ContentView: View {
                     onEventSelected: { id in
                         isFocusMode = false  // need the sidebar to show it
                         revealEventID = id
-                    })
+                    },
+                    zoom: $zoom)
             }
 
             // Exit button pinned to the true top-right corner of the
@@ -65,8 +68,16 @@ struct ContentView: View {
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,
                 toggleFocus: { isFocusMode.toggle() }))
-        .onAppear { startWatching() }
-        .onChange(of: fileURL) { startWatching() }
+        .onAppear {
+            startWatching()
+            loadWindowState()
+        }
+        .onChange(of: fileURL) {
+            startWatching()
+            loadWindowState()
+        }
+        .onChange(of: zoom) { saveWindowState() }
+        .onChange(of: isFocusMode) { saveWindowState() }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -201,6 +212,25 @@ struct ContentView: View {
         fileWatcher = FileWatcher(url: fileURL) {
             reloadFromDisk()
         }
+    }
+
+    // Per-document window UI state (zoom + focus mode), keyed by path.
+    private func windowStateKey() -> String? {
+        fileURL.map { "windowState:\($0.path)" }
+    }
+
+    private func loadWindowState() {
+        guard let key = windowStateKey(),
+              let dict = UserDefaults.standard.dictionary(forKey: key)
+        else { return }
+        if let z = dict["zoom"] as? Double { zoom = CGFloat(z) }
+        if let f = dict["focus"] as? Bool { isFocusMode = f }
+    }
+
+    private func saveWindowState() {
+        guard let key = windowStateKey() else { return }
+        UserDefaults.standard.set(
+            ["zoom": Double(zoom), "focus": isFocusMode], forKey: key)
     }
 
     /// Apply external file changes (e.g. Claude editing via MCP) to the

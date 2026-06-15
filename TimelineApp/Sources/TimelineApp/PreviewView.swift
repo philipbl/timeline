@@ -14,9 +14,11 @@ struct PreviewView: View {
     /// Called when an event is double-clicked.
     var onEventSelected: ((UUID) -> Void)?
 
+    /// Owned by ContentView so it can be persisted per window.
+    @Binding var zoom: CGFloat
+
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("showTodayMarker") private var showTodayMarker = true
-    @State private var zoom: CGFloat = 1
     @State private var gestureBaseZoom: CGFloat?
     @State private var dragTarget:
         (id: UUID, part: TimelineRenderer.EventHitPart, anchorDay: Day)?
