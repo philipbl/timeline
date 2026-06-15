@@ -301,14 +301,23 @@ enum SelfTests {
                 expect(resolved[a.id] != resolved[b.id])
             }
         }
-        test("explicitColorRespectedAndSkipped") {
-            var custom = point("Custom", "2026-06-10")
-            custom.colorHex = "#123456"
-            let other = point("Other", "2026-06-11")
-            let config = makeConfig(events: [custom, other])
-            let resolved = TimelineRenderer.resolvedColorHex(for: config)
-            expect(resolved[custom.id] == "#123456")
-            expect(resolved[other.id] == TimelineRenderer.palettes[0].colors[0])
+        test("explicitColorDoesNotShiftOthers") {
+            let palette = TimelineRenderer.palettes[0].colors
+            // Three events; the middle one gets a custom color. The other
+            // two keep their absolute-position palette colors.
+            let a = point("A", "2026-06-10")
+            var b = point("B", "2026-06-11")
+            let c = point("C", "2026-06-12")
+            let withOverride = makeConfig(events: [a, b, c])  // b uncolored
+            b.colorHex = "#123456"
+            let after = makeConfig(events: [a, b, c])  // b colored
+
+            let plain = TimelineRenderer.resolvedColorHex(for: withOverride)
+            let overridden = TimelineRenderer.resolvedColorHex(for: after)
+            expect(overridden[b.id] == "#123456")
+            // A and C unchanged by B's override (positions 0 and 2)
+            expect(plain[a.id] == palette[0] && overridden[a.id] == palette[0])
+            expect(plain[c.id] == palette[2] && overridden[c.id] == palette[2])
         }
         test("customPaletteOverridesNamed") {
             var config = makeConfig(events: [point("A", "2026-06-10")])
@@ -566,6 +575,94 @@ enum SelfTests {
                 _ = try MCPServer.callTool("create_timeline", ["path": file])
                 expect(false, "expected duplicate create to throw")
             } catch {}
+        }
+
+        // Natural-language event parser
+        test("parserMonthNameSingleAndRange") {
+            let ref = day("2026-06-01")
+            let single = EventParser.parse("Submit paper July 18", relativeTo: ref)
+            expect(single?.name == "Submit paper")
+            expect(single?.start == day("2026-07-18"))
+            expect(single?.end == nil)
+
+            let range = EventParser.parse("Trip to Boston Jul 1-7", relativeTo: ref)
+            expect(range?.name == "Trip to Boston")
+            expect(range?.start == day("2026-07-01"))
+            expect(range?.end == day("2026-07-07"))
+
+            let cross = EventParser.parse("Cottage Jul 30 to Aug 3", relativeTo: ref)
+            expect(cross?.start == day("2026-07-30"))
+            expect(cross?.end == day("2026-08-03"))
+        }
+        test("parserNumericDates") {
+            let ref = day("2026-06-01")
+            let single = EventParser.parse("Dentist 7/15", relativeTo: ref)
+            expect(single?.name == "Dentist")
+            expect(single?.start == day("2026-07-15"))
+
+            let withYear = EventParser.parse("Launch 1/5/2027", relativeTo: ref)
+            expect(withYear?.start == day("2027-01-05"))
+
+            let range = EventParser.parse("Camping 7/1-7/4", relativeTo: ref)
+            expect(range?.start == day("2026-07-01"))
+            expect(range?.end == day("2026-07-04"))
+        }
+        test("parserRelativeDates") {
+            // 2026-06-10 is a Wednesday (weekday 2)
+            let wed = day("2026-06-10")
+            expect(EventParser.parse("Lunch today", relativeTo: wed)?.start == wed)
+            expect(
+                EventParser.parse("Call tomorrow", relativeTo: wed)?.start
+                    == day("2026-06-11"))
+            // next Friday from Wed = 2 days out, "next" skips a week
+            expect(
+                EventParser.parse("Review Friday", relativeTo: wed)?.start
+                    == day("2026-06-12"))
+            expect(
+                EventParser.parse("Review next Friday", relativeTo: wed)?.start
+                    == day("2026-06-19"))
+        }
+        test("parserNoDateDefaultsToToday") {
+            let ref = day("2026-06-01")
+            let event = EventParser.parse("Some idea", relativeTo: ref)
+            expect(event?.name == "Some idea")
+            expect(event?.start == ref)
+            expect(event?.end == nil)
+        }
+        test("intelligenceReplyParsing") {
+            // The Apple Intelligence path returns a TITLE/START/END reply;
+            // this parses it (the model call itself isn't unit-testable).
+            let single = EventIntelligence.parseReply(
+                "TITLE: Dentist\nSTART: 2026-07-15\nEND: NONE", original: "x")
+            expect(single?.name == "Dentist")
+            expect(single?.start == day("2026-07-15"))
+            expect(single?.end == nil)
+
+            let range = EventIntelligence.parseReply(
+                "TITLE: Trip\nSTART: 2026-07-01\nEND: 2026-07-07", original: "x")
+            expect(range?.end == day("2026-07-07"))
+
+            // Garbage / missing start → nil so the caller falls back
+            expect(EventIntelligence.parseReply("nope", original: "x") == nil)
+            // End before start is dropped
+            let bad = EventIntelligence.parseReply(
+                "TITLE: A\nSTART: 2026-07-10\nEND: 2026-07-01", original: "x")
+            expect(bad?.end == nil)
+        }
+        test("parserListAndBullets") {
+            let ref = day("2026-06-01")
+            let list = """
+                - Kickoff Jun 9
+                * Design Jun 10-14
+                Launch 6/20
+                """
+            let events = EventParser.parseList(list, relativeTo: ref)
+            expect(events.count == 3)
+            expect(events[0].name == "Kickoff")
+            expect(events[0].start == day("2026-06-09"))
+            expect(events[1].name == "Design")
+            expect(events[1].end == day("2026-06-14"))
+            expect(events[2].start == day("2026-06-20"))
         }
 
         // Exports
