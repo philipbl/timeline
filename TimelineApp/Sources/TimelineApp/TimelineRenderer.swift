@@ -124,7 +124,7 @@ struct TimelineRenderer {
     let dayWidth: CGFloat  // 30 by default; set from days_per_row
     let tickHeight: CGFloat = 12
     let dotRadius: CGFloat = 4.5
-    let rangeBaseOffset: CGFloat = 10
+    let rangeBaseOffset: CGFloat = 0  // bars sit on the timeline axis
     let rangeStackSpacing: CGFloat = 9
     let eventVerticalSpacing: CGFloat = 16
     let eventBaseOffset: CGFloat = 25
@@ -134,6 +134,62 @@ struct TimelineRenderer {
     let labelTextHeight: CGFloat = 12
     static let noteFontSize: CGFloat = 7
     static let noteLineHeight: CGFloat = 10
+    static let maxNoteWidth: CGFloat = 140
+    /// Hard cap on canvas note lines; beyond this the note is truncated with
+    /// an ellipsis. The editor still allows longer notes — this is display
+    /// only so a long note can't dominate the timeline.
+    static let maxNoteLines = 4
+
+    /// The note width budget for a marker at `markerX`. Near the edges the
+    /// centered note would overflow the canvas, so clamp to twice the
+    /// distance to the nearer edge (minus a little padding).
+    static func noteMaxWidth(markerX: CGFloat, canvasWidth: CGFloat) -> CGFloat {
+        let edge = min(markerX, canvasWidth - markerX)
+        return min(maxNoteWidth, max(40, 2 * edge - 8))
+    }
+
+    /// Trims `s` and appends an ellipsis so the result fits `maxWidth`.
+    static func truncated(_ s: String, font: CTFont, maxWidth: CGFloat) -> String {
+        var t = s
+        while !t.isEmpty && textWidth(t + "…", font: font) > maxWidth {
+            t.removeLast()
+        }
+        return t + "…"
+    }
+
+    /// Greedy word-wrap of a note to lines no wider than `maxWidth`, capped
+    /// at `maxLines` (the last visible line gets an ellipsis when cut).
+    static func wrappedNoteLines(
+        _ text: String, font: CTFont, maxWidth: CGFloat,
+        maxLines: Int = maxNoteLines
+    ) -> [String] {
+        let words = text.split(whereSeparator: { $0 == " " }).map(String.init)
+        guard !words.isEmpty else { return [] }
+        var lines: [String] = []
+        var current = ""
+        for word in words {
+            let candidate = current.isEmpty ? word : current + " " + word
+            if current.isEmpty || textWidth(candidate, font: font) <= maxWidth {
+                current = candidate
+            } else {
+                lines.append(current)
+                current = word
+            }
+        }
+        if !current.isEmpty { lines.append(current) }
+
+        let overLineLimit = lines.count > maxLines
+        var kept = Array(lines.prefix(maxLines))
+        // Past the line cap: end the last visible line with an ellipsis.
+        if overLineLimit, let last = kept.last {
+            kept[kept.count - 1] = Self.truncated(last, font: font, maxWidth: maxWidth)
+        }
+        // A single unbreakable word can still exceed the width; clamp it.
+        return kept.map {
+            textWidth($0, font: font) <= maxWidth
+                ? $0 : Self.truncated($0, font: font, maxWidth: maxWidth)
+        }
+    }
 
     let config: TimelineConfig
     let layout: Layout
@@ -181,18 +237,37 @@ struct TimelineRenderer {
     /// event's effective color.
     static func resolvedColorHex(for config: TimelineConfig) -> [UUID: String] {
         let palette = effectivePalette(for: config)
-        let sorted = config.events.sorted { $0.start < $1.start }
+        // Unnamed events aren't drawn, so they don't consume a palette
+        // slot — otherwise adding a blank event shifts everyone's color.
+        let sorted = config.events
+            .filter { !$0.name.isEmpty }
+            .sorted { $0.start < $1.start }
         var result: [UUID: String] = [:]
-        var paletteIndex = 0
-        for event in sorted {
+        // Index by absolute chronological position so a per-event color
+        // override keeps its slot — it doesn't reshuffle other events.
+        for (index, event) in sorted.enumerated() {
             if let hex = event.colorHex, !hex.isEmpty {
                 result[event.id] = hex
             } else {
-                result[event.id] = palette[paletteIndex % palette.count]
-                paletteIndex += 1
+                result[event.id] = palette[index % palette.count]
             }
         }
         return result
+    }
+
+    /// The palette color a not-yet-named event would get once named, based
+    /// on where its `start` slots into the chronological order of named
+    /// events. Lets the editor show the right color immediately instead of
+    /// defaulting to the first palette slot and snapping after a name is
+    /// typed.
+    static func predictedColorHex(for config: TimelineConfig, start: Day) -> String {
+        let palette = effectivePalette(for: config)
+        // Named events with start <= ours precede it (stable sort keeps a
+        // freshly added event after same-day ones).
+        let priorNamed = config.events.filter {
+            !$0.name.isEmpty && $0.start <= start
+        }.count
+        return palette[priorNamed % palette.count]
     }
 
     init(
@@ -249,13 +324,22 @@ struct TimelineRenderer {
             remaining -= days
         }
 
+        // Canvas width (independent of note/label height), needed up front
+        // so notes can be wrapped to stay within the canvas edges.
+        let dw0 = dayWidth
+        let widestSpan = rowSpans.map { CGFloat($0.1 - 1) * dw0 }.max() ?? 0
+        let layoutCanvasWidth =
+            layout == .paged
+            ? Self.pageSize.width
+            : max(leftMargin + widestSpan + rightMargin, 200)
+
         // Per-row space needed above the baseline (driven by label stacking)
         var gapsAbove: [CGFloat] = []
         for (rowDay, days) in rowSpans {
             var labelTop: CGFloat = 0
             _ = Self.layoutEvents(
                 forRow: rowDay, numDays: days, events: sortedEvents,
-                leftMargin: leftMargin, dayWidth: dayWidth,
+                leftMargin: leftMargin, dayWidth: dayWidth, canvasWidth: layoutCanvasWidth,
                 rangeBaseOffset: rangeBaseOffset, rangeStackSpacing: rangeStackSpacing,
                 eventBaseOffset: eventBaseOffset, eventVerticalSpacing: eventVerticalSpacing,
                 maxEventHeight: maxEventHeight, labelFontSize: labelFontSize,
@@ -306,15 +390,9 @@ struct TimelineRenderer {
                         baselineY: totalHeight - offsets[index], pageIndex: 0))
             }
             // Width snug to the widest row so the content is centered with
-            // equal margins — the fixed page width left extra slack on the
-            // right (a 22-day row spans 630pt but the page is 792pt wide)
-            let dw = dayWidth
-            let widestSpan = rowSpans.map {
-                CGFloat($0.1 - 1) * dw
-            }.max() ?? 0
-            let contentWidth = leftMargin + widestSpan + rightMargin
+            // equal margins (the fixed page width left slack on the right).
             self.canvasSize = CGSize(
-                width: max(contentWidth, 200), height: totalHeight)
+                width: layoutCanvasWidth, height: totalHeight)
         }
         self.rows = built
     }
@@ -404,12 +482,15 @@ struct TimelineRenderer {
 
     static func layoutEvents(
         forRow rowStart: Day, numDays: Int, events: [TimelineEvent],
-        leftMargin: CGFloat, dayWidth: CGFloat,
+        leftMargin: CGFloat, dayWidth: CGFloat, canvasWidth: CGFloat,
         rangeBaseOffset: CGFloat, rangeStackSpacing: CGFloat,
         eventBaseOffset: CGFloat, eventVerticalSpacing: CGFloat,
         maxEventHeight: CGFloat, labelFontSize: CGFloat, labelTextHeight: CGFloat,
         maxLabelTop: inout CGFloat
     ) -> [Placement] {
+        // Unnamed events aren't drawn (e.g. a just-added event before the
+        // user types a name).
+        let events = events.filter { !$0.name.isEmpty }
         let rowEnd = rowStart.shifted(days: numDays - 1)
         let startX = leftMargin
         let barEndX = startX + CGFloat(numDays - 1) * dayWidth
@@ -499,15 +580,18 @@ struct TimelineRenderer {
                 placements[index].isRange
                 ? placements[index].lineYOffset - rangeBaseOffset : 0
             let textWidth = Self.textWidth(event.name, font: labelFont)
-            // A note is a second, smaller line drawn below the label
-            // (toward the marker); reserve its width and the extra height
-            // beneath the label so neighbors keep clear of it
-            let noteExtra = event.notes.isEmpty ? 0 : noteLineHeight
-            let noteWidth =
-                event.notes.isEmpty
-                ? 0 : Self.textWidth(event.notes, font: noteFont)
+            // The note wraps below the label (toward the marker). Reserve
+            // its width and stacked-line height; the label rides higher as
+            // the note grows so its bottom line stays clear of the marker.
+            let noteLines = Self.wrappedNoteLines(
+                event.notes, font: noteFont,
+                maxWidth: Self.noteMaxWidth(markerX: markerX, canvasWidth: canvasWidth))
+            let noteHeight = CGFloat(noteLines.count) * noteLineHeight
+            let noteWidth = noteLines.reduce(CGFloat(0)) {
+                max($0, Self.textWidth($1, font: noteFont))
+            }
             let boxWidth = max(textWidth, noteWidth)
-            var yOffset = eventBaseOffset + stackExtra
+            var yOffset = eventBaseOffset + stackExtra + noteHeight
 
             for _ in 0..<20 {
                 if yOffset > maxEventHeight {
@@ -515,8 +599,8 @@ struct TimelineRenderer {
                     break
                 }
                 let rect = CGRect(
-                    x: markerX - boxWidth / 2, y: yOffset - noteExtra,
-                    width: boxWidth, height: labelTextHeight + noteExtra)
+                    x: markerX - boxWidth / 2, y: yOffset - noteHeight,
+                    width: boxWidth, height: labelTextHeight + noteHeight)
                 if !overlapsExisting(rect) { break }
                 yOffset += eventVerticalSpacing
             }
@@ -526,8 +610,8 @@ struct TimelineRenderer {
             placements[index].textWidth = textWidth
             occupiedBoxes.append(
                 CGRect(
-                    x: markerX - boxWidth / 2, y: yOffset - noteExtra,
-                    width: boxWidth, height: labelTextHeight + noteExtra))
+                    x: markerX - boxWidth / 2, y: yOffset - noteHeight,
+                    width: boxWidth, height: labelTextHeight + noteHeight))
             maxLabelTop = max(maxLabelTop, yOffset + labelTextHeight)
         }
 
@@ -538,7 +622,7 @@ struct TimelineRenderer {
         var unused: CGFloat = 0
         return Self.layoutEvents(
             forRow: rowStart, numDays: numDays, events: sortedEvents,
-            leftMargin: leftMargin, dayWidth: dayWidth,
+            leftMargin: leftMargin, dayWidth: dayWidth, canvasWidth: canvasSize.width,
             rangeBaseOffset: rangeBaseOffset, rangeStackSpacing: rangeStackSpacing,
             eventBaseOffset: eventBaseOffset, eventVerticalSpacing: eventVerticalSpacing,
             maxEventHeight: maxEventHeight, labelFontSize: labelFontSize,
@@ -917,13 +1001,27 @@ struct TimelineRenderer {
                 ctx.strokePath()
             }
 
-            // Note: a small gray line under the label, centered on the marker
+            // Note: small gray text under the label, wrapped to multiple
+            // lines and centered on the marker
             if !p.event.notes.isEmpty {
-                Self.drawText(
-                    p.event.notes,
-                    at: CGPoint(x: p.markerX, y: labelYAbs - Self.noteLineHeight),
-                    font: Self.font("Helvetica", Self.noteFontSize),
-                    color: theme.subtitle, align: .center, in: ctx)
+                let noteFont = Self.font("Helvetica", Self.noteFontSize)
+                let lines = Self.wrappedNoteLines(
+                    p.event.notes, font: noteFont,
+                    maxWidth: Self.noteMaxWidth(
+                        markerX: p.markerX, canvasWidth: canvasSize.width))
+                // Important events have an outline box below the baseline;
+                // drop the notes a touch so they clear it.
+                let notePad: CGFloat = p.event.important ? 4 : 0
+                for (i, line) in lines.enumerated() {
+                    Self.drawText(
+                        line,
+                        at: CGPoint(
+                            x: p.markerX,
+                            y: labelYAbs - notePad
+                                - CGFloat(i + 1) * Self.noteLineHeight),
+                        font: noteFont, color: theme.subtitle,
+                        align: .center, in: ctx)
+                }
             }
         }
     }
