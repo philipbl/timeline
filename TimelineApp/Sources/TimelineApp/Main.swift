@@ -76,10 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Suppress the automatic launch Open panel — we restore the previous
-    /// documents instead. Without this the panel flashes on screen before
-    /// our restore runs. After launch, normal behavior resumes.
+    /// documents instead. Returns false during launch (didHandleLaunch is
+    /// still false) so no panel flashes; true afterward so normal opening
+    /// behavior resumes.
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        !didHandleLaunch
+        didHandleLaunch
     }
 
     /// Dock-icon click with no windows open shows the Open panel.
