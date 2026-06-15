@@ -63,9 +63,65 @@ enum Main {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let restoreKey = "restoreOpenDocuments"
+
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             DeepLink.handle(url)
+        }
+    }
+
+    /// Reopen the documents (and window frames) that were open at last
+    /// quit. macOS's built-in restoration doesn't fire reliably for this
+    /// ad-hoc-signed bundle, so we persist it ourselves.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async { self.restoreOpenDocuments() }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        saveOpenDocuments()
+    }
+
+    private func saveOpenDocuments() {
+        let entries: [[String: String]] =
+            NSDocumentController.shared.documents.compactMap { doc in
+                guard let path = doc.fileURL?.path,
+                      let window = doc.windowControllers.first?.window
+                else { return nil }
+                return ["path": path, "frame": window.frameDescriptor]
+            }
+        UserDefaults.standard.set(entries, forKey: Self.restoreKey)
+    }
+
+    private func restoreOpenDocuments() {
+        // Don't override a document opened by a file double-click, a
+        // deep link, or the system at launch.
+        let alreadyOpen = NSDocumentController.shared.documents.contains {
+            $0.fileURL != nil
+        }
+        guard !alreadyOpen,
+              let entries = UserDefaults.standard.array(forKey: Self.restoreKey)
+                  as? [[String: String]],
+              !entries.isEmpty
+        else { return }
+
+        let controller = NSDocumentController.shared
+        for entry in entries {
+            guard let path = entry["path"] else { continue }
+            let url = URL(fileURLWithPath: path)
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            controller.openDocument(withContentsOf: url, display: true) {
+                document, _, _ in
+                if let frame = entry["frame"],
+                   let window = document?.windowControllers.first?.window {
+                    window.setFrame(from: frame)
+                }
+            }
+        }
+
+        // Dismiss the launch "Open" panel if it appeared
+        for window in NSApp.windows where window is NSOpenPanel {
+            window.close()
         }
     }
 }
