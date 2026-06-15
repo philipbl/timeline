@@ -75,12 +75,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Suppress the automatic launch Open panel — we restore the previous
-    /// documents instead. Returns false during launch (didHandleLaunch is
-    /// still false) so no panel flashes; true afterward so normal opening
-    /// behavior resumes.
+    /// Reopen previous documents as early as possible — before AppKit
+    /// decides whether to show the launch Open panel. When a document is
+    /// opened during willFinishLaunching, AppKit skips the panel, so there
+    /// is no flash. (macOS's own restoration never engages for this
+    /// ad-hoc SPM DocumentGroup bundle, so we persist it ourselves.)
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        didRestore = restoreOpenDocuments()
+    }
+
+    /// Suppress the launch Open panel if we restored documents.
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        didHandleLaunch
+        !didRestore
     }
 
     /// Dock-icon click with no windows open shows the Open panel.
@@ -91,28 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// Reopen the documents (and window frames) that were open at last
-    /// quit. macOS's built-in restoration doesn't fire reliably for this
-    /// ad-hoc-signed bundle, so we persist it ourselves.
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        DispatchQueue.main.async {
-            defer { self.didHandleLaunch = true }
-            // A file double-click or deep link already opened a document
-            let alreadyOpen = NSDocumentController.shared.documents.contains {
-                $0.fileURL != nil
-            }
-            if alreadyOpen { return }
-            if self.restoreOpenDocuments() { return }
-            // Nothing to restore — show the Open panel, as on a first run
-            NSDocumentController.shared.openDocument(nil)
-        }
-    }
-
     func applicationWillTerminate(_ notification: Notification) {
         saveOpenDocuments()
     }
 
-    private var didHandleLaunch = false
+    private var didRestore = false
 
     private func saveOpenDocuments() {
         let entries: [[String: String]] =
