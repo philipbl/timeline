@@ -60,6 +60,73 @@ enum EventParser {
         return ParsedEvent(name: text, start: today, end: nil)
     }
 
+    /// Parse a dragged calendar event (iCalendar / .ics, e.g. from
+    /// Fantastical or Calendar) into an event. Deterministic — reads SUMMARY
+    /// and DTSTART/DTEND straight from the VEVENT.
+    static func parseICS(_ raw: String) -> ParsedEvent? {
+        // Unfold continued lines (RFC 5545: a CRLF + space/tab continues).
+        let unfolded = raw
+            .replacingOccurrences(of: "\r\n ", with: "")
+            .replacingOccurrences(of: "\r\n\t", with: "")
+            .replacingOccurrences(of: "\n ", with: "")
+            .replacingOccurrences(of: "\n\t", with: "")
+
+        var summary = ""
+        var start: Day?
+        var startAllDay = false
+        var end: Day?
+        // Character.isNewline matches CRLF too (it's a single grapheme in
+        // Swift), unlike comparing against "\r"/"\n" individually.
+        for rawLine in unfolded.split(whereSeparator: \.isNewline) {
+            let line = String(rawLine)
+            let upper = line.uppercased()
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let value = String(line[line.index(after: colon)...])
+            if upper.hasPrefix("SUMMARY") {
+                summary = unescapeICS(value)
+            } else if upper.hasPrefix("DTSTART") {
+                if let day = icsDay(value) {
+                    start = day
+                    // All-day when the value has no time component. Check the
+                    // value, not the line — "DTSTART" itself contains a 'T'.
+                    startAllDay = !value.uppercased().contains("T")
+                }
+            } else if upper.hasPrefix("DTEND") {
+                end = icsDay(value)
+            }
+        }
+
+        guard let start else { return nil }
+        var inclusiveEnd: Day?
+        if let end {
+            // All-day DTEND is exclusive (the morning after the last day).
+            var e = startAllDay ? end.shifted(days: -1) : end
+            if e < start { e = start }
+            inclusiveEnd = (e == start) ? nil : e
+        }
+        let name = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ParsedEvent(
+            name: name.isEmpty ? "Event" : name, start: start, end: inclusiveEnd)
+    }
+
+    private static func icsDay(_ value: String) -> Day? {
+        let digits = Array(value.prefix { $0.isNumber })
+        guard digits.count >= 8,
+              let y = Int(String(digits[0..<4])),
+              let m = Int(String(digits[4..<6])),
+              let d = Int(String(digits[6..<8]))
+        else { return nil }
+        return Day(year: y, month: m, day: d)
+    }
+
+    private static func unescapeICS(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\n", with: " ")
+            .replacingOccurrences(of: "\\N", with: " ")
+            .replacingOccurrences(of: "\\,", with: ",")
+            .replacingOccurrences(of: "\\;", with: ";")
+            .replacingOccurrences(of: "\\\\", with: "\\")
+    }
+
     /// Parse multiple lines (e.g. a pasted list) into events.
     static func parseList(
         _ text: String, relativeTo today: Day = .today(),
@@ -229,10 +296,12 @@ enum EventParser {
         title = title.replacingOccurrences(
             of: #"(?i)\s*\b(on|from|due|by|the|at)\b\s*$"#,
             with: "", options: .regularExpression)
+        // Collapse any whitespace run — including newlines, so a date line
+        // followed by the title on the next line folds to one clean title.
         title = title.replacingOccurrences(
-            of: #"\s{2,}"#, with: " ", options: .regularExpression)
+            of: #"\s+"#, with: " ", options: .regularExpression)
         return title.trimmingCharacters(
-            in: CharacterSet(charactersIn: " \t-–—,:"))
+            in: CharacterSet(charactersIn: " \t\n\r-–—,:"))
     }
 
     // MARK: - Regex helpers

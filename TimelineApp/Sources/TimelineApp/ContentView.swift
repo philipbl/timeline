@@ -24,6 +24,8 @@ struct ContentView: View {
     /// empty cancel removes it.
     @State private var isNewEvent = false
     @State private var showSettings = false
+    /// True while a dropped/pasted text is being parsed into an event.
+    @State private var isParsingDrop = false
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -52,6 +54,7 @@ struct ContentView: View {
                 eventBinding: eventBinding,
                 onDeleteEvent: deleteEvent,
                 onCloseEditor: closeEditor,
+                onDropText: createEvent(fromText:droppedOn:),
                 // Relative phrases ("next Friday") resolve against today,
                 // not the timeline's start date
                 referenceDay: .today(),
@@ -75,6 +78,20 @@ struct ContentView: View {
                 .popover(isPresented: newEventPresented, arrowEdge: .trailing) {
                     newEventEditor
                 }
+            }
+        }
+        // Spinner while a dropped/pasted event is being parsed (the AI path
+        // can take a moment), so the canvas doesn't just sit there.
+        .overlay {
+            if isParsingDrop {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Adding event…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(20)
+                .glassChrome(in: RoundedRectangle(cornerRadius: 12))
             }
         }
         // Focus-mode exit button at the true top-right corner
@@ -239,6 +256,46 @@ struct ContentView: View {
             document.config.removingEvent(id: id), undoManager: undoManager)
         editingEventID = nil
         isNewEvent = false
+    }
+
+    /// Create an event from text dropped on the canvas. The natural-language
+    /// parser fills the name/dates; if it finds no date, the event lands on
+    /// the day under the drop point. Opens the new event for editing.
+    private func createEvent(fromText text: String, droppedOn day: Day) {
+        // Calendar drops (Fantastical, Calendar) arrive as iCalendar — parse
+        // the SUMMARY/DTSTART/DTEND directly, no natural-language guessing.
+        if text.contains("BEGIN:VEVENT"), let parsed = EventParser.parseICS(text) {
+            insertEvent(
+                TimelineEvent(
+                    name: parsed.name, start: parsed.start, end: parsed.end))
+            return
+        }
+
+        isParsingDrop = true
+        Task {
+            let parsed = await EventIntelligence.parse(text, relativeTo: .today())
+            await MainActor.run {
+                isParsingDrop = false
+                let event =
+                    parsed.map {
+                        TimelineEvent(name: $0.name, start: $0.start, end: $0.end)
+                    } ?? TimelineEvent(
+                        name: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                        start: day)
+                insertEvent(event)
+            }
+        }
+    }
+
+    /// Insert an event in chronological order and open it for editing.
+    private func insertEvent(_ event: TimelineEvent) {
+        var config = document.config
+        let index = config.events.firstIndex { event.start < $0.start }
+            ?? config.events.endIndex
+        config.events.insert(event, at: index)
+        document.update(config, undoManager: undoManager)
+        isNewEvent = false
+        editingEventID = event.id
     }
 
     // Save-panel accessories use plain AppKit controls; SwiftUI hosting
