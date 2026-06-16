@@ -42,6 +42,14 @@ enum DeepLink {
         let fileURL = URL(
             fileURLWithPath: (fileParam as NSString).expandingTildeInPath)
 
+        // Only act on our own document type. The scheme is reachable from
+        // web pages and other apps, and add-event rewrites the file, so
+        // refusing non-.timeline paths keeps it from clobbering arbitrary
+        // YAML/JSON (or opening unrelated files).
+        guard fileURL.pathExtension.lowercased() == "timeline" else {
+            throw Failure(message: "The file must be a .timeline document")
+        }
+
         switch components.host {
         case "open":
             NSWorkspace.shared.open(fileURL)
