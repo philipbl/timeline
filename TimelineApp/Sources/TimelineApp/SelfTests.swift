@@ -665,6 +665,21 @@ enum SelfTests {
             expect(events[2].start == day("2026-06-20"))
         }
 
+        test("parseICSAllDayRangeWithCRLF") {
+            // Real calendar apps (Fantastical) drop CRLF .ics. In Swift
+            // "\r\n" is one Character, so splitting on "\r"/"\n" individually
+            // would leave it unparsed — guard that regression.
+            let ics =
+                "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+                + "DTSTART;VALUE=DATE:20260701\r\nDTEND;VALUE=DATE:20260708\r\n"
+                + "SUMMARY:Zach and Blair visiting\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+            let parsed = EventParser.parseICS(ics)
+            expect(parsed?.name == "Zach and Blair visiting")
+            expect(parsed?.start == day("2026-07-01"))
+            // All-day DTEND is exclusive, so Jul 8 → inclusive Jul 7.
+            expect(parsed?.end == day("2026-07-07"))
+        }
+
         // Exports
         test("pdfExportProducesValidData") {
             let config = makeConfig(

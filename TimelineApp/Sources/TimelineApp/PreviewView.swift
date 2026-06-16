@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Live-rendered timeline canvas. Renders a bitmap whose resolution
 /// tracks the current zoom (so it stays sharp without PDFKit's document
@@ -24,6 +25,9 @@ struct PreviewView: View {
     var eventBinding: ((UUID) -> Binding<TimelineEvent>?)?
     var onDeleteEvent: ((UUID) -> Void)?
     var onCloseEditor: (() -> Void)?
+    /// Text dropped on the canvas, with the day under the drop point, so a
+    /// new event can be parsed/created from it.
+    var onDropText: ((String, Day) -> Void)?
     var referenceDay: Day = .today()
 
     /// Owned by ContentView so it can be persisted per window.
@@ -35,6 +39,7 @@ struct PreviewView: View {
     @State private var dragTarget:
         (id: UUID, part: TimelineRenderer.EventHitPart, anchorDay: Day)?
     @State private var dragMissed = false
+    @State private var dropTargeted = false
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.25...3
     private static let maxRenderScale: CGFloat = 6  // ~432 dpi
@@ -90,6 +95,26 @@ struct PreviewView: View {
                                 updateCursor(
                                     phase, displayWidth: displayWidth,
                                     canvas: canvas)
+                            }
+                            // Drop text (e.g. "Lunch with Sam Friday") onto the
+                            // canvas to create an event at the day under it.
+                            // Accept broadly (.data covers text/RTF/private
+                            // app types like Fantastical events) and extract
+                            // text with several strategies in the handler.
+                            .onDrop(
+                                of: [.data, .url],
+                                isTargeted: $dropTargeted
+                            ) { providers, location in
+                                handleTextDrop(
+                                    providers, at: location,
+                                    displayWidth: displayWidth, canvas: canvas)
+                            }
+                            .overlay {
+                                if dropTargeted {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(
+                                            Color.accentColor, lineWidth: 2)
+                                }
                             }
                             // Editor popover anchored at the event's marker.
                             // A hand-rolled NSPopover (not SwiftUI's .popover)
@@ -197,6 +222,67 @@ struct PreviewView: View {
                 width: 1, height: max(yTop - yBottom, 1))
         }
         return .zero
+    }
+
+    /// Load dropped text and hand it to `onDropText` with the day under the
+    /// drop point. Returns true if any provider supplied text.
+    private func handleTextDrop(
+        _ providers: [NSItemProvider], at location: CGPoint,
+        displayWidth: CGFloat, canvas: CGSize
+    ) -> Bool {
+        guard let onDropText else { return false }
+        let scale = displayWidth / canvas.width
+        let point = CGPoint(
+            x: location.x / scale, y: canvas.height - location.y / scale)
+        let day = TimelineRenderer(config: config, layout: .continuous).day(at: point)
+
+        guard let provider = providers.first else { return false }
+        loadText(from: provider) { text in
+            guard let text,
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return }
+            DispatchQueue.main.async { onDropText(text, day) }
+        }
+        return true
+    }
+
+    /// Pull text out of a dropped item via several strategies: plain string,
+    /// then attributed (RTF), then a URL's string.
+    private func loadText(
+        from provider: NSItemProvider, completion: @escaping (String?) -> Void
+    ) {
+        if provider.hasItemConformingToTypeIdentifier("com.apple.ical.ics") {
+            // Calendar apps (Fantastical, Calendar) drop an .ics event with
+            // no plain-text flavor; hand the raw iCalendar to the parser.
+            provider.loadDataRepresentation(
+                forTypeIdentifier: "com.apple.ical.ics"
+            ) { data, _ in
+                completion(data.flatMap { String(data: $0, encoding: .utf8) })
+            }
+        } else if provider.canLoadObject(ofClass: NSString.self) {
+            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                completion(obj as? String)
+            }
+        } else if provider.hasItemConformingToTypeIdentifier(UTType.rtf.identifier) {
+            // RTF (e.g. some calendar apps): decode to plain text.
+            provider.loadDataRepresentation(
+                forTypeIdentifier: UTType.rtf.identifier
+            ) { data, _ in
+                let string = data.flatMap {
+                    try? NSAttributedString(
+                        data: $0,
+                        options: [.documentType: NSAttributedString.DocumentType.rtf],
+                        documentAttributes: nil)
+                }?.string
+                completion(string)
+            }
+        } else if provider.canLoadObject(ofClass: NSURL.self) {
+            _ = provider.loadObject(ofClass: NSURL.self) { obj, _ in
+                completion((obj as? URL)?.absoluteString)
+            }
+        } else {
+            completion(nil)
+        }
     }
 
     /// Copy the canvas to the clipboard as it currently looks (theme

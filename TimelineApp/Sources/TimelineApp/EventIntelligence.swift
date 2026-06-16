@@ -12,11 +12,20 @@ import FoundationModels
 /// the FoundationModels macros need a plugin the SwiftPM command-line
 /// build can't load, so we ask for a strict line format and parse it.
 enum EventIntelligence {
+    /// Apple Intelligence is opt-in (UserDefaults "useAppleIntelligence",
+    /// default off): the on-device model gives nondeterministic and often
+    /// wrong results for this task, so the deterministic EventParser is the
+    /// default. Flip the flag to experiment with the AI path.
+    static var useAppleIntelligence: Bool {
+        UserDefaults.standard.bool(forKey: "useAppleIntelligence")
+    }
+
     static func parse(
         _ text: String, relativeTo today: Day
     ) async -> ParsedEvent? {
         #if canImport(FoundationModels)
-        if #available(macOS 26.0, *), let ai = await appleIntelligence(text, today) {
+        if useAppleIntelligence, #available(macOS 26.0, *),
+           let ai = await appleIntelligence(text, today) {
             return ai
         }
         #endif

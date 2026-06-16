@@ -10,6 +10,7 @@ struct ContentView: View {
     var fileURL: URL?
 
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isFocusMode: Bool
     /// Per-window zoom, owned here so it persists across relaunch.
     @State private var zoom: CGFloat
@@ -23,6 +24,8 @@ struct ContentView: View {
     /// empty cancel removes it.
     @State private var isNewEvent = false
     @State private var showSettings = false
+    /// True while a dropped/pasted text is being parsed into an event.
+    @State private var isParsingDrop = false
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -51,6 +54,7 @@ struct ContentView: View {
                 eventBinding: eventBinding,
                 onDeleteEvent: deleteEvent,
                 onCloseEditor: closeEditor,
+                onDropText: createEvent(fromText:droppedOn:),
                 // Relative phrases ("next Friday") resolve against today,
                 // not the timeline's start date
                 referenceDay: .today(),
@@ -76,6 +80,20 @@ struct ContentView: View {
                 }
             }
         }
+        // Spinner while a dropped/pasted event is being parsed (the AI path
+        // can take a moment), so the canvas doesn't just sit there.
+        .overlay {
+            if isParsingDrop {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Adding event…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(20)
+                .glassChrome(in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
         // Focus-mode exit button at the true top-right corner
         .overlay(alignment: .topTrailing) {
             if isFocusMode {
@@ -98,7 +116,9 @@ struct ContentView: View {
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,
                 toggleFocus: { isFocusMode.toggle() },
-                resetZoom: { withAnimation(.snappy) { zoom = 1 } }))
+                resetZoom: { withAnimation(.snappy) { zoom = 1 } },
+                newEventFromClipboard: pasteEventFromClipboard,
+                copyImage: copyImageToClipboard))
         .onAppear { startWatching() }
         .onChange(of: fileURL) {
             startWatching()
@@ -129,14 +149,34 @@ struct ContentView: View {
                 Button(action: exportPDF) {
                     Label("Export PDF", systemImage: "doc.richtext")
                 }
-                .help("Export the timeline as a PDF")
+                .help("Export the timeline as a PDF — or drag it out another application")
+                .onDrag { shareableTimeline.pdfDragProvider() }
 
                 Button(action: exportPNG) {
                     Label("Export PNG", systemImage: "photo")
                 }
-                .help("Export the timeline as a PNG image")
+                .help("Export the timeline as a PNG image — or drag it out another application")
+                // Drag-out lives here, not on the canvas, because the canvas
+                // drag gesture is reserved for moving events.
+                .onDrag { shareableTimeline.dragProvider() }
+
+                ShareLink(
+                    item: shareableTimeline,
+                    preview: SharePreview(
+                        document.config.title.isEmpty
+                            ? "Timeline" : document.config.title))
+                    .help("Share the timeline image")
             }
         }
+    }
+
+    /// The current timeline as a shareable PNG (rendered lazily, in the
+    /// current light/dark appearance).
+    private var shareableTimeline: ShareableTimeline {
+        ShareableTimeline(
+            config: document.config,
+            title: document.config.title,
+            dark: colorScheme == .dark)
     }
 
     // MARK: - Event editor
@@ -218,6 +258,46 @@ struct ContentView: View {
             document.config.removingEvent(id: id), undoManager: undoManager)
         editingEventID = nil
         isNewEvent = false
+    }
+
+    /// Create an event from text dropped on the canvas. The natural-language
+    /// parser fills the name/dates; if it finds no date, the event lands on
+    /// the day under the drop point. Opens the new event for editing.
+    private func createEvent(fromText text: String, droppedOn day: Day) {
+        // Calendar drops (Fantastical, Calendar) arrive as iCalendar — parse
+        // the SUMMARY/DTSTART/DTEND directly, no natural-language guessing.
+        if text.contains("BEGIN:VEVENT"), let parsed = EventParser.parseICS(text) {
+            insertEvent(
+                TimelineEvent(
+                    name: parsed.name, start: parsed.start, end: parsed.end))
+            return
+        }
+
+        isParsingDrop = true
+        Task {
+            let parsed = await EventIntelligence.parse(text, relativeTo: .today())
+            await MainActor.run {
+                isParsingDrop = false
+                let event =
+                    parsed.map {
+                        TimelineEvent(name: $0.name, start: $0.start, end: $0.end)
+                    } ?? TimelineEvent(
+                        name: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                        start: day)
+                insertEvent(event)
+            }
+        }
+    }
+
+    /// Insert an event in chronological order and open it for editing.
+    private func insertEvent(_ event: TimelineEvent) {
+        var config = document.config
+        let index = config.events.firstIndex { event.start < $0.start }
+            ?? config.events.endIndex
+        config.events.insert(event, at: index)
+        document.update(config, undoManager: undoManager)
+        isNewEvent = false
+        editingEventID = event.id
     }
 
     // Save-panel accessories use plain AppKit controls; SwiftUI hosting
@@ -322,6 +402,32 @@ struct ContentView: View {
         } else {
             document.config = shifted
         }
+    }
+
+    /// Copy the rendered timeline image to the clipboard (⇧⌘C), in the
+    /// current light/dark appearance — same output as the canvas's
+    /// right-click "Copy Image".
+    private func copyImageToClipboard() {
+        let dark = colorScheme == .dark
+        let bgHex = dark ? "#1B1B20" : "#FAFAFC"
+        guard let image = Exporter.continuousImage(
+            for: document.config, theme: dark ? .dark : .light,
+            background: TimelineRenderer.cg(bgHex), scale: 2)
+        else { return }
+        let size = TimelineRenderer(config: document.config, layout: .continuous)
+            .canvasSize
+        let nsImage = NSImage(cgImage: image, size: size)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([nsImage])
+    }
+
+    /// Create an event from the clipboard text (⇧⌘V). A separate shortcut
+    /// from plain ⌘V so it never shadows pasting into the editor's fields.
+    private func pasteEventFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        createEvent(fromText: text, droppedOn: .today())
     }
 
     private func startWatching() {

@@ -72,6 +72,18 @@ enum Exporter {
         for config: TimelineConfig, to url: URL, scale: CGFloat = 2,
         includeGenerated: Bool = false, dark: Bool = false
     ) throws {
+        let data = try pngData(
+            for: config, scale: scale,
+            includeGenerated: includeGenerated, dark: dark)
+        try data.write(to: url)
+    }
+
+    /// Rendered PNG as in-memory data — for Share and drag-and-drop, which
+    /// produce the bytes lazily (only when a destination is chosen).
+    static func pngData(
+        for config: TimelineConfig, scale: CGFloat = 2,
+        includeGenerated: Bool = false, dark: Bool = false
+    ) throws -> Data {
         let renderer = TimelineRenderer(
             config: config, layout: .continuous, theme: dark ? .dark : .light,
             includeGenerated: includeGenerated)
@@ -102,7 +114,7 @@ enum Exporter {
         guard let data = rep.representation(using: .png, properties: [:]) else {
             throw ExportError.contextCreationFailed
         }
-        try data.write(to: url)
+        return data
     }
 
     /// Mean per-channel difference between two PNGs, as a percentage.
