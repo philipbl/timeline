@@ -116,7 +116,9 @@ struct ContentView: View {
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,
                 toggleFocus: { isFocusMode.toggle() },
-                resetZoom: { withAnimation(.snappy) { zoom = 1 } }))
+                resetZoom: { withAnimation(.snappy) { zoom = 1 } },
+                newEventFromClipboard: pasteEventFromClipboard,
+                copyImage: copyImageToClipboard))
         .onAppear { startWatching() }
         .onChange(of: fileURL) {
             startWatching()
@@ -147,13 +149,13 @@ struct ContentView: View {
                 Button(action: exportPDF) {
                     Label("Export PDF", systemImage: "doc.richtext")
                 }
-                .help("Export the timeline as a PDF — or drag it out to Finder/Mail")
+                .help("Export the timeline as a PDF — or drag it out another application")
                 .onDrag { shareableTimeline.pdfDragProvider() }
 
                 Button(action: exportPNG) {
                     Label("Export PNG", systemImage: "photo")
                 }
-                .help("Export the timeline as a PNG image — or drag it out to Finder/Mail")
+                .help("Export the timeline as a PNG image — or drag it out another application")
                 // Drag-out lives here, not on the canvas, because the canvas
                 // drag gesture is reserved for moving events.
                 .onDrag { shareableTimeline.dragProvider() }
@@ -400,6 +402,32 @@ struct ContentView: View {
         } else {
             document.config = shifted
         }
+    }
+
+    /// Copy the rendered timeline image to the clipboard (⇧⌘C), in the
+    /// current light/dark appearance — same output as the canvas's
+    /// right-click "Copy Image".
+    private func copyImageToClipboard() {
+        let dark = colorScheme == .dark
+        let bgHex = dark ? "#1B1B20" : "#FAFAFC"
+        guard let image = Exporter.continuousImage(
+            for: document.config, theme: dark ? .dark : .light,
+            background: TimelineRenderer.cg(bgHex), scale: 2)
+        else { return }
+        let size = TimelineRenderer(config: document.config, layout: .continuous)
+            .canvasSize
+        let nsImage = NSImage(cgImage: image, size: size)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([nsImage])
+    }
+
+    /// Create an event from the clipboard text (⇧⌘V). A separate shortcut
+    /// from plain ⌘V so it never shadows pasting into the editor's fields.
+    private func pasteEventFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        createEvent(fromText: text, droppedOn: .today())
     }
 
     private func startWatching() {

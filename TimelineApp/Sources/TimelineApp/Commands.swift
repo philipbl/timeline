@@ -8,6 +8,8 @@ struct TimelineActions {
     var printTimeline: () -> Void
     var toggleFocus: () -> Void
     var resetZoom: () -> Void
+    var newEventFromClipboard: () -> Void
+    var copyImage: () -> Void
 }
 
 struct TimelineActionsKey: FocusedValueKey {
@@ -47,6 +49,17 @@ struct TimelineCommands: Commands {
             Button("Print…") { actions?.printTimeline() }
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(actions == nil)
+        }
+
+        CommandGroup(after: .pasteboard) {
+            Button("Copy Image") { actions?.copyImage() }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(actions == nil)
+            Button("New Event from Clipboard") {
+                actions?.newEventFromClipboard()
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+            .disabled(actions == nil)
         }
 
         CommandGroup(after: .sidebar) {
