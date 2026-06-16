@@ -10,6 +10,7 @@ struct ContentView: View {
     var fileURL: URL?
 
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isFocusMode: Bool
     /// Per-window zoom, owned here so it persists across relaunch.
     @State private var zoom: CGFloat
@@ -135,8 +136,24 @@ struct ContentView: View {
                     Label("Export PNG", systemImage: "photo")
                 }
                 .help("Export the timeline as a PNG image")
+
+                ShareLink(
+                    item: shareableTimeline,
+                    preview: SharePreview(
+                        document.config.title.isEmpty
+                            ? "Timeline" : document.config.title))
+                    .help("Share the timeline image")
             }
         }
+    }
+
+    /// The current timeline as a shareable PNG (rendered lazily, in the
+    /// current light/dark appearance).
+    private var shareableTimeline: ShareableTimeline {
+        ShareableTimeline(
+            config: document.config,
+            title: document.config.title,
+            dark: colorScheme == .dark)
     }
 
     // MARK: - Event editor
