@@ -76,10 +76,45 @@ struct TimelineSettings: View {
                         get: { config.customPalette ?? [] },
                         set: { config.customPalette = $0 }))
             }
+
+            Divider()
+
+            holidaysSection
         }
         .toggleStyle(.switch)
         .controlSize(.small)
         .padding(14)
         .frame(width: 300)
+    }
+
+    /// Add/edit/remove custom holidays (US federal holidays and weekends are
+    /// shaded automatically, so only user-defined ones live here).
+    private var holidaysSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Holidays").font(.headline)
+                Spacer()
+                Button {
+                    config.customHolidays.append(CustomHoliday(start: .today()))
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Add a custom holiday")
+            }
+
+            ForEach($config.customHolidays) { $holiday in
+                HolidayRow(holiday: $holiday) {
+                    config.customHolidays.removeAll { $0.id == holiday.id }
+                }
+            }
+
+            Text(
+                config.customHolidays.isEmpty
+                    ? "US federal holidays and weekends are shaded automatically. Add your own here."
+                    : "US federal holidays and weekends are shaded automatically.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 }
