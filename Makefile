@@ -1,6 +1,7 @@
 APP := build/Timeline.app
 VERSION := $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//')
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
+LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 .PHONY: app
 app:
@@ -33,6 +34,10 @@ app:
 	codesign --force -s - --entitlements TimelineApp/quicklook.entitlements \
 		$(APP)/Contents/PlugIns/TimelineThumbnail.appex
 	codesign --force -s - $(APP)
+	# Register this build (and its Quick Look appexes) with LaunchServices
+	# so the active copy wins — stale builds in other paths can't hijack the
+	# .timeline document/Quick Look handlers.
+	$(LSREGISTER) -f -R $(abspath $(APP))
 
 .PHONY: run-app
 run-app: app
