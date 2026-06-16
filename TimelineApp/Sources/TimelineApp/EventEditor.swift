@@ -110,7 +110,7 @@ struct EventEditor: View {
                     .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .toggleStyle(.switch)
+        .toggleStyle(EditorSwitchStyle())
         .controlSize(.small)
         .padding(14)
         .frame(width: 300)
