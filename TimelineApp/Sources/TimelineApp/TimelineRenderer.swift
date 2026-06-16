@@ -292,6 +292,13 @@ struct TimelineRenderer {
             }
         }
         if end < start { end = start }
+        // Clamp pathological spans (a stray/typo year, or a crafted file):
+        // an unbounded range would build tens of thousands of rows and an
+        // enormous bitmap. ~12 years is far beyond any real planning timeline.
+        let maxSpanDays = 366 * 12
+        if start.days(until: end) + 1 > maxSpanDays {
+            end = start.shifted(days: maxSpanDays - 1)
+        }
         self.startDay = start
         self.endDay = end
         self.totalDays = start.days(until: end) + 1
