@@ -17,26 +17,44 @@ struct ShareableTimeline: Transferable {
         .suggestedFileName { $0.fileName }
     }
 
-    var fileName: String {
+    /// Extension-less base name; the system appends the type's extension.
+    var baseName: String {
         let base = title.isEmpty ? "timeline" : title
-        return base.lowercased().replacingOccurrences(of: " ", with: "-") + ".png"
+        return base.lowercased().replacingOccurrences(of: " ", with: "-")
     }
+
+    /// Full file name with extension, for ShareLink's suggestedFileName.
+    var fileName: String { baseName + ".png" }
 
     /// An NSItemProvider that produces the PNG on demand, for `.onDrag`.
     func dragProvider() -> NSItemProvider {
+        // suggestedName must be extension-less: the system adds ".png" from
+        // the type, so "name.png" here would become "name.png.png".
+        provider(typeIdentifier: UTType.png.identifier) { config, dark in
+            try Exporter.pngData(for: config, scale: 2, dark: dark)
+        }
+    }
+
+    /// An NSItemProvider that produces the PDF on demand, for `.onDrag`.
+    func pdfDragProvider() -> NSItemProvider {
+        provider(typeIdentifier: UTType.pdf.identifier) { config, _ in
+            try Exporter.pdfData(for: config)
+        }
+    }
+
+    private func provider(
+        typeIdentifier: String, render: @escaping (TimelineConfig, Bool) throws -> Data
+    ) -> NSItemProvider {
         let provider = NSItemProvider()
-        provider.suggestedName = fileName
+        provider.suggestedName = baseName
         let config = config
         let dark = dark
         provider.registerDataRepresentation(
-            forTypeIdentifier: UTType.png.identifier, visibility: .all
+            forTypeIdentifier: typeIdentifier, visibility: .all
         ) { completion in
             DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    completion(try Exporter.pngData(for: config, scale: 2, dark: dark), nil)
-                } catch {
-                    completion(nil, error)
-                }
+                do { completion(try render(config, dark), nil) }
+                catch { completion(nil, error) }
             }
             return nil
         }
