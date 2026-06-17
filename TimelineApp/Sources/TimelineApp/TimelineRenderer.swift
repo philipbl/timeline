@@ -309,8 +309,14 @@ struct TimelineRenderer {
         self.totalDays = start.days(until: end) + 1
         // The continuous (on-screen/PNG) layout uses tighter top/bottom
         // margins than the paged PDF, which keeps a proper print margin.
+        // topBaseMargin is the distance to the title's baseline, so add the
+        // title's cap height — otherwise the visible space above the title
+        // (baseline minus the glyph height) is smaller than the bottom margin.
         let isContinuous = layout == .continuous
-        let topBase = isContinuous ? 27.0 : baseTopMargin
+        let titleCap =
+            config.title.isEmpty
+            ? 0 : CTFontGetCapHeight(Self.font("Helvetica-Bold", 18))
+        let topBase = isContinuous ? 27.0 + titleCap : baseTopMargin
         self.topBaseMargin = topBase
         self.bottomMarginEffective = isContinuous ? 27 : bottomMargin
         self.topMargin = topBase + (config.title.isEmpty ? 0 : 39.6)
