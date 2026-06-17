@@ -151,5 +151,10 @@ struct TimelineAppMain: App {
         .commands {
             TimelineCommands()
         }
+
+        // Adds the standard "Settings…" menu item (⌘,).
+        Settings {
+            SettingsView()
+        }
     }
 }
