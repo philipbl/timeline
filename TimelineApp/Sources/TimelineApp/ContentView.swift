@@ -28,6 +28,8 @@ struct ContentView: View {
     @State private var isParsingDrop = false
     @State private var isSearching = false
     @State private var searchQuery = ""
+    /// Set to scroll the canvas to a found event; PreviewView resets it.
+    @State private var scrollTarget: UUID?
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -57,6 +59,7 @@ struct ContentView: View {
                 onDeleteEvent: deleteEvent,
                 onCloseEditor: closeEditor,
                 onDropText: createEvent(fromText:droppedOn:),
+                scrollTarget: $scrollTarget,
                 // Relative phrases ("next Friday") resolve against today,
                 // not the timeline's start date
                 referenceDay: .today(),
@@ -444,11 +447,17 @@ struct ContentView: View {
         createEvent(fromText: text, droppedOn: .today())
     }
 
-    /// Open a found event's editor and dismiss the search panel.
+    /// Open a found event: scroll it into view, then open its editor, and
+    /// dismiss the search panel. The editor opens after the scroll settles —
+    /// the popover can't anchor to an off-screen marker, so opening it
+    /// immediately would silently fail when the canvas is zoomed in.
     private func openEvent(_ id: UUID) {
         closeSearch()
         isNewEvent = false
-        editingEventID = id
+        scrollTarget = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            editingEventID = id
+        }
     }
 
     private func closeSearch() {

@@ -28,6 +28,9 @@ struct PreviewView: View {
     /// Text dropped on the canvas, with the day under the drop point, so a
     /// new event can be parsed/created from it.
     var onDropText: ((String, Day) -> Void)?
+    /// Set to an event id (e.g. from search) to scroll it into view; reset
+    /// to nil once handled.
+    @Binding var scrollTarget: UUID?
     var referenceDay: Day = .today()
 
     /// Owned by ContentView so it can be persisted per window.
@@ -58,6 +61,7 @@ struct PreviewView: View {
             let renderScale = min(
                 max(ceil(displayWidth * 2 / canvas.width), 1), Self.maxRenderScale)
 
+            ScrollViewReader { proxy in
             ScrollView([.vertical, .horizontal]) {
                 Group {
                     let scale = displayWidth / canvas.width
@@ -120,6 +124,19 @@ struct PreviewView: View {
                             // A hand-rolled NSPopover (not SwiftUI's .popover)
                             // so it survives app switches and re-anchors in
                             // place when switching events instead of flashing.
+                            // Invisible per-event anchors so the scroll view
+                            // can bring a found (off-screen) event into view.
+                            .overlay {
+                                ForEach(
+                                    eventAnchorPoints(scale: scale, canvas: canvas),
+                                    id: \.id
+                                ) { anchor in
+                                    Color.clear
+                                        .frame(width: 1, height: 1)
+                                        .position(anchor.point)
+                                        .id(anchor.id)
+                                }
+                            }
                             .overlay {
                                 EditorPopover(
                                     isPresented: editingEventID != nil && !isNewEvent,
@@ -139,6 +156,12 @@ struct PreviewView: View {
                 .frame(
                     minWidth: geo.size.width, minHeight: geo.size.height,
                     alignment: .top)
+            }
+            .onChange(of: scrollTarget) {
+                guard let id = scrollTarget else { return }
+                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                scrollTarget = nil
+            }
             }
         }
         .background(Color(hex: dark ? "#1B1B20" : "#FAFAFC"))
@@ -283,6 +306,25 @@ struct PreviewView: View {
         } else {
             completion(nil)
         }
+    }
+
+    /// A point per event (its marker) in the image's coordinate space, each
+    /// tagged with the event id, so ScrollViewReader can scroll to one.
+    private func eventAnchorPoints(
+        scale: CGFloat, canvas: CGSize
+    ) -> [(id: UUID, point: CGPoint)] {
+        let renderer = TimelineRenderer(config: config, layout: .continuous)
+        var points: [(id: UUID, point: CGPoint)] = []
+        for row in renderer.rows {
+            for p in renderer.layoutEvents(forRow: row.startDay, numDays: row.numDays) {
+                points.append((
+                    p.event.id,
+                    CGPoint(
+                        x: p.markerX * scale,
+                        y: (canvas.height - row.baselineY) * scale)))
+            }
+        }
+        return points
     }
 
     /// Copy the canvas to the clipboard as it currently looks (theme
