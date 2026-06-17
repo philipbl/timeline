@@ -201,6 +201,11 @@ struct TimelineRenderer {
     let totalDays: Int
     let maxDaysPerRow: Int
     let topMargin: CGFloat
+    /// Base top margin actually used (tighter for the on-screen continuous
+    /// layout than the paged print margin); the title baseline sits here.
+    private let topBaseMargin: CGFloat
+    /// Bottom margin actually used (tighter for continuous than paged).
+    private let bottomMarginEffective: CGFloat
     private let sortedEvents: [TimelineEvent]
     private let eventColorMap: [UUID: CGColor]
     private let usHolidays: [Day: String]
@@ -302,7 +307,13 @@ struct TimelineRenderer {
         self.startDay = start
         self.endDay = end
         self.totalDays = start.days(until: end) + 1
-        self.topMargin = baseTopMargin + (config.title.isEmpty ? 0 : 39.6)
+        // The continuous (on-screen/PNG) layout uses tighter top/bottom
+        // margins than the paged PDF, which keeps a proper print margin.
+        let isContinuous = layout == .continuous
+        let topBase = isContinuous ? 27.0 : baseTopMargin
+        self.topBaseMargin = topBase
+        self.bottomMarginEffective = isContinuous ? 27 : bottomMargin
+        self.topMargin = topBase + (config.title.isEmpty ? 0 : 39.6)
 
         // days_per_row stretches/shrinks day spacing to fill the row;
         // without it, days get 30pt each
@@ -389,7 +400,7 @@ struct TimelineRenderer {
                 offsets.append(offsetFromTop)
                 offsetFromTop += rowDepthBelow
             }
-            let totalHeight = offsetFromTop + bottomMargin
+            let totalHeight = offsetFromTop + bottomMarginEffective
             for (index, (rowDay, days)) in rowSpans.enumerated() {
                 built.append(
                     Row(
@@ -721,7 +732,7 @@ struct TimelineRenderer {
     private func drawHeader(in ctx: CGContext) {
         let width = canvasSize.width
         if !config.title.isEmpty {
-            let titleY = canvasSize.height - baseTopMargin
+            let titleY = canvasSize.height - topBaseMargin
             Self.drawText(
                 config.title, at: CGPoint(x: width / 2, y: titleY),
                 font: Self.font("Helvetica-Bold", 18), color: theme.title,
