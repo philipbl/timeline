@@ -22,7 +22,14 @@ final class TimelineDocument: ReferenceFileDocument {
     static var writableContentTypes: [UTType] { [.timelineDocument] }
 
     init() {
-        config = TimelineConfig.starter()
+        var starter = TimelineConfig.starter()
+        // Apply the user's default palette (Settings ▸ New Documents).
+        if let name = UserDefaults.standard.string(forKey: "defaultPalette"),
+           name != TimelineRenderer.palettes[0].name,
+           TimelineRenderer.palettes.contains(where: { $0.name == name }) {
+            starter.paletteName = name
+        }
+        config = starter
     }
 
     init(configuration: ReadConfiguration) throws {
