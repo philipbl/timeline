@@ -26,6 +26,10 @@ struct ContentView: View {
     @State private var showSettings = false
     /// True while a dropped/pasted text is being parsed into an event.
     @State private var isParsingDrop = false
+    @State private var isSearching = false
+    @State private var searchQuery = ""
+    /// Set to scroll the canvas to a found event; PreviewView resets it.
+    @State private var scrollTarget: UUID?
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -55,6 +59,7 @@ struct ContentView: View {
                 onDeleteEvent: deleteEvent,
                 onCloseEditor: closeEditor,
                 onDropText: createEvent(fromText:droppedOn:),
+                scrollTarget: $scrollTarget,
                 // Relative phrases ("next Friday") resolve against today,
                 // not the timeline's start date
                 referenceDay: .today(),
@@ -94,6 +99,17 @@ struct ContentView: View {
                 .glassChrome(in: RoundedRectangle(cornerRadius: 12))
             }
         }
+        // Find panel (⌘F), top-center.
+        .overlay(alignment: .top) {
+            if isSearching {
+                EventSearchPanel(
+                    query: $searchQuery,
+                    events: document.config.events,
+                    onSelect: openEvent,
+                    onClose: closeSearch)
+                    .padding(.top, 12)
+            }
+        }
         // Focus-mode exit button at the true top-right corner
         .overlay(alignment: .topTrailing) {
             if isFocusMode {
@@ -118,7 +134,8 @@ struct ContentView: View {
                 toggleFocus: { isFocusMode.toggle() },
                 resetZoom: { withAnimation(.snappy) { zoom = 1 } },
                 newEventFromClipboard: pasteEventFromClipboard,
-                copyImage: copyImageToClipboard))
+                copyImage: copyImageToClipboard,
+                findEvent: { isSearching = true }))
         .onAppear { startWatching() }
         .onChange(of: fileURL) {
             startWatching()
@@ -428,6 +445,24 @@ struct ContentView: View {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
         createEvent(fromText: text, droppedOn: .today())
+    }
+
+    /// Open a found event: scroll it into view, then open its editor, and
+    /// dismiss the search panel. The editor opens after the scroll settles —
+    /// the popover can't anchor to an off-screen marker, so opening it
+    /// immediately would silently fail when the canvas is zoomed in.
+    private func openEvent(_ id: UUID) {
+        closeSearch()
+        isNewEvent = false
+        scrollTarget = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            editingEventID = id
+        }
+    }
+
+    private func closeSearch() {
+        isSearching = false
+        searchQuery = ""
     }
 
     private func startWatching() {
