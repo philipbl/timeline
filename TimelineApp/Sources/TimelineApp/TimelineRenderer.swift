@@ -128,7 +128,6 @@ struct TimelineRenderer {
     let rangeStackSpacing: CGFloat = 9
     let eventVerticalSpacing: CGFloat = 16
     let eventBaseOffset: CGFloat = 25
-    let maxEventHeight: CGFloat = 86.4  // 1.2 inch
     let rowDepthBelow: CGFloat = 52
     let labelFontSize: CGFloat = 9
     let labelTextHeight: CGFloat = 12
@@ -366,7 +365,7 @@ struct TimelineRenderer {
                 leftMargin: leftMargin, dayWidth: dayWidth, canvasWidth: layoutCanvasWidth,
                 rangeBaseOffset: rangeBaseOffset, rangeStackSpacing: rangeStackSpacing,
                 eventBaseOffset: eventBaseOffset, eventVerticalSpacing: eventVerticalSpacing,
-                maxEventHeight: maxEventHeight, labelFontSize: labelFontSize,
+                labelFontSize: labelFontSize,
                 labelTextHeight: labelTextHeight, maxLabelTop: &labelTop)
             labelTop = max(labelTop, eventBaseOffset + 12)
             gapsAbove.append(labelTop + 8)
@@ -509,7 +508,7 @@ struct TimelineRenderer {
         leftMargin: CGFloat, dayWidth: CGFloat, canvasWidth: CGFloat,
         rangeBaseOffset: CGFloat, rangeStackSpacing: CGFloat,
         eventBaseOffset: CGFloat, eventVerticalSpacing: CGFloat,
-        maxEventHeight: CGFloat, labelFontSize: CGFloat, labelTextHeight: CGFloat,
+        labelFontSize: CGFloat, labelTextHeight: CGFloat,
         maxLabelTop: inout CGFloat
     ) -> [Placement] {
         // Unnamed events aren't drawn (e.g. a just-added event before the
@@ -617,11 +616,11 @@ struct TimelineRenderer {
             let boxWidth = max(textWidth, noteWidth)
             var yOffset = eventBaseOffset + stackExtra + noteHeight
 
-            for _ in 0..<20 {
-                if yOffset > maxEventHeight {
-                    yOffset = maxEventHeight
-                    break
-                }
+            // Stack the label upward until it clears every placed label and
+            // bar. No hard height cap: clamping to one made labels on a busy
+            // day pile at the same offset and overlap. The row grows to fit
+            // (maxLabelTop below drives the row's reserved height).
+            for _ in 0..<40 {
                 let rect = CGRect(
                     x: markerX - boxWidth / 2, y: yOffset - noteHeight,
                     width: boxWidth, height: labelTextHeight + noteHeight)
@@ -649,7 +648,7 @@ struct TimelineRenderer {
             leftMargin: leftMargin, dayWidth: dayWidth, canvasWidth: canvasSize.width,
             rangeBaseOffset: rangeBaseOffset, rangeStackSpacing: rangeStackSpacing,
             eventBaseOffset: eventBaseOffset, eventVerticalSpacing: eventVerticalSpacing,
-            maxEventHeight: maxEventHeight, labelFontSize: labelFontSize,
+            labelFontSize: labelFontSize,
             labelTextHeight: labelTextHeight, maxLabelTop: &unused)
     }
 
