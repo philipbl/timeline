@@ -62,6 +62,8 @@ struct TimelineRenderer {
         var subtitle: CGColor
         var footer: CGColor
         var today: CGColor
+        /// Label opacity for tentative events (alpha dims muddier on dark)
+        var tentativeAlpha: CGFloat
 
         static let light = Theme(
             bar: cg("#33333B"),
@@ -75,7 +77,8 @@ struct TimelineRenderer {
             title: cg("#26262E"),
             subtitle: cg("#8A8A93"),
             footer: cg("#B8B8C0"),
-            today: cg("#C77D00"))
+            today: cg("#C77D00"),
+            tentativeAlpha: 0.6)
 
         static let dark = Theme(
             bar: cg("#C8C8D0"),
@@ -89,7 +92,8 @@ struct TimelineRenderer {
             title: cg("#E8E8EE"),
             subtitle: cg("#8A8A93"),
             footer: cg("#5A5A64"),
-            today: cg("#E5A93D"))
+            today: cg("#E5A93D"),
+            tentativeAlpha: 0.75)
     }
 
     /// Paged reproduces the CLI's letter-landscape pages (PDF export).
@@ -1037,9 +1041,11 @@ struct TimelineRenderer {
                 ctx.strokePath()
             }
 
+            // Tentative labels are dimmed (box included) as well as italic
+            let labelColor = tentative ? eventColor.copy(alpha: theme.tentativeAlpha)! : eventColor
             Self.drawText(
                 p.event.name, at: CGPoint(x: labelX, y: labelYAbs),
-                font: tentative ? tentativeFont : labelFont, color: eventColor,
+                font: tentative ? tentativeFont : labelFont, color: labelColor,
                 align: .left, in: ctx)
 
             // Important events get a box around the label
@@ -1047,7 +1053,7 @@ struct TimelineRenderer {
                 let box = CGRect(
                     x: labelX - 4, y: labelYAbs - 3.5,
                     width: p.textWidth + 8, height: labelTextHeight + 1.5)
-                ctx.setStrokeColor(eventColor)
+                ctx.setStrokeColor(labelColor)
                 ctx.setLineWidth(1.2)
                 ctx.addPath(
                     CGPath(
