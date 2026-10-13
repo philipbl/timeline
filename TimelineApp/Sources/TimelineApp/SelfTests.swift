@@ -111,6 +111,7 @@ enum SelfTests {
             config.shadeHolidays = false
             config.events[0].done = true
             config.events[0].important = true
+            config.events[1].tentative = true
             config.events[0].notes = "bring the slides"
             config.events[1].colorHex = "#123456"
             config.customHolidays = [
@@ -130,6 +131,7 @@ enum SelfTests {
             expect(parsed.customPalette == ["#D62828", "#003049"])
             expect(parsed.events.map(\.name) == ["Dot", "Range"])
             expect(parsed.events[0].done && parsed.events[0].important)
+            expect(!parsed.events[0].tentative && parsed.events[1].tentative)
             expect(parsed.events[0].notes == "bring the slides")
             expect(parsed.events[1].colorHex == "#123456")
             expect(parsed.customHolidays.first?.name == "Retreat")
@@ -541,13 +543,16 @@ enum SelfTests {
                 ])
             _ = try MCPServer.callTool(
                 "update_event",
-                ["path": file, "name": "Dot", "important": true, "start": "2026-06-16"])
+                [
+                    "path": file, "name": "Dot", "important": true, "tentative": true,
+                    "start": "2026-06-16",
+                ])
 
             let parsed = try ConfigYAML.parse(
                 try String(contentsOfFile: file, encoding: .utf8))
             expect(parsed.title == "MCP")
             expect(parsed.events.map(\.name) == ["Bar", "Dot"])  // sorted
-            expect(parsed.events[1].important)
+            expect(parsed.events[1].important && parsed.events[1].tentative)
             expect(parsed.events[1].start == day("2026-06-16"))
 
             _ = try MCPServer.callTool("remove_event", ["path": file, "name": "Bar"])

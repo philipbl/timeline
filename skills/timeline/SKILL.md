@@ -16,7 +16,8 @@ automatic color assignment. Manage them with the `timeline` MCP tools.
    dates for a freeform/historical timeline (bounds infer from events).
 2. `add_events` — batch all events in one call. An `end` date makes a
    bar; omitting it makes a dot. Mark deadlines `important: true`
-   (boxed label) and finished items `done: true` (struck through).
+   (boxed label), finished items `done: true` (struck through), and
+   unconfirmed plans `tentative: true` (hollow/dashed, italic label).
 3. `render_timeline` to a `.png` and **look at the returned image** —
    check for crowded labels or bad color pairings, adjust (e.g.
    `days_per_row` via `set_timeline_options`), and re-render.

@@ -799,6 +799,26 @@ struct TimelineRenderer {
             }
         }
 
+        // Keep the axis and ticks out from under tentative markers, so
+        // hollow dots read as rings (not crosshairs) and dashed bars' gaps
+        // stay light
+        ctx.saveGState()
+        for p in layoutEvents(forRow: row.startDay, numDays: row.numDays)
+        where p.event.tentative {
+            let hole: CGRect
+            if p.isRange {
+                guard p.lineYOffset == rangeBaseOffset else { continue }  // stacked: off the axis
+                hole = CGRect(x: p.startX, y: y - 2.25, width: p.endX - p.startX, height: 4.5)
+            } else {
+                let r = p.wedgeCount > 1 ? dotRadius + 1 : dotRadius
+                hole = CGRect(x: p.markerX - r, y: y - r, width: 2 * r, height: 2 * r)
+            }
+            // Clips intersect, so each even-odd clip subtracts one more hole
+            ctx.addRect(CGRect(origin: .zero, size: canvasSize))
+            if p.isRange { ctx.addRect(hole) } else { ctx.addEllipse(in: hole) }
+            ctx.clip(using: .evenOdd)
+        }
+
         // Main timeline bar
         ctx.setStrokeColor(theme.bar)
         ctx.setLineWidth(2.5)
@@ -829,6 +849,7 @@ struct TimelineRenderer {
                     align: .center, in: ctx)
             }
         }
+        ctx.restoreGState()
 
         // Holiday names: centered in the band when it holds one holiday.
         // No shading, no names.
@@ -935,19 +956,32 @@ struct TimelineRenderer {
     private func drawEvents(_ row: Row, in ctx: CGContext) {
         let y = row.baselineY
         let labelFont = Self.font("Helvetica-Bold", labelFontSize)
+        let tentativeFont = Self.font("Helvetica-BoldOblique", labelFontSize)
 
         for p in layoutEvents(forRow: row.startDay, numDays: row.numDays) {
             let eventColor = color(for: p.event)
+            // Tentative events draw hollow dots, dashed bars, italic labels
+            let tentative = p.event.tentative
             var markerTop: CGFloat
 
             if p.isRange {
                 let lineY = y + p.lineYOffset
-                ctx.setStrokeColor(eventColor)
                 ctx.setLineWidth(4.5)
                 ctx.setLineCap(.round)
+                if tentative {
+                    // Faint solid underlay so the dash gaps are tinted, not axis
+                    ctx.setStrokeColor(eventColor.copy(alpha: 0.3)!)
+                    ctx.move(to: CGPoint(x: p.startX, y: lineY))
+                    ctx.addLine(to: CGPoint(x: p.endX, y: lineY))
+                    ctx.strokePath()
+                    // Round caps lengthen each dash by the line width: 7.5 on, 3.5 off
+                    ctx.setLineDash(phase: 0, lengths: [3, 8])
+                }
+                ctx.setStrokeColor(eventColor)
                 ctx.move(to: CGPoint(x: p.startX, y: lineY))
                 ctx.addLine(to: CGPoint(x: p.endX, y: lineY))
                 ctx.strokePath()
+                ctx.setLineDash(phase: 0, lengths: [])
                 ctx.setLineCap(.butt)
 
                 if p.continuesLeft {
@@ -963,6 +997,11 @@ struct TimelineRenderer {
                 markerTop = p.lineYOffset + 4
             } else {
                 ctx.setFillColor(eventColor)
+                ctx.setStrokeColor(eventColor)
+                // Inset the ring by half its width so it matches a dot's size
+                let ring: CGFloat = 1.6
+                ctx.setLineWidth(ring)
+                let mode: CGPathDrawingMode = tentative ? .stroke : .fill
                 if p.wedgeCount > 1 {
                     let r = dotRadius + 1
                     let extent = 360.0 / CGFloat(p.wedgeCount)
@@ -974,13 +1013,14 @@ struct TimelineRenderer {
                         center: center, radius: r, startAngle: startAngle,
                         endAngle: endAngle, clockwise: false)
                     ctx.closePath()
-                    ctx.fillPath()
+                    ctx.drawPath(using: mode)
                     markerTop = r + 2
                 } else {
-                    ctx.fillEllipse(
-                        in: CGRect(
-                            x: p.markerX - dotRadius, y: y - dotRadius,
-                            width: dotRadius * 2, height: dotRadius * 2))
+                    let dot = CGRect(
+                        x: p.markerX - dotRadius, y: y - dotRadius,
+                        width: dotRadius * 2, height: dotRadius * 2)
+                    ctx.addEllipse(in: tentative ? dot.insetBy(dx: ring / 2, dy: ring / 2) : dot)
+                    ctx.drawPath(using: mode)
                     markerTop = dotRadius + 2
                 }
             }
@@ -999,7 +1039,8 @@ struct TimelineRenderer {
 
             Self.drawText(
                 p.event.name, at: CGPoint(x: labelX, y: labelYAbs),
-                font: labelFont, color: eventColor, align: .left, in: ctx)
+                font: tentative ? tentativeFont : labelFont, color: eventColor,
+                align: .left, in: ctx)
 
             // Important events get a box around the label
             if p.event.important {

@@ -24,6 +24,7 @@ form, watch the timeline render live, and export to PDF or PNG.
   colors assign chronologically so neighboring events never match, with
   per-event overrides
 - **Done events** — struck through and grayed out
+- **Tentative events** — hollow dot or dashed bar, italic label
 - **Export** — paged PDF (US letter, landscape) or single PNG at up to
   288 dpi
 - **Finder integration** — custom document icon and Quick Look
@@ -78,6 +79,7 @@ events:
   - name: "Family Visiting"
     start: "2026-07-01"
     end: "2026-07-07"
+    tentative: true            # not confirmed yet
   - name: "Big Deadline"
     start: "2026-06-18"
     important: true            # boxed label
@@ -129,8 +131,8 @@ timeline://open?file=~/plan.timeline
 ```
 
 `add-event` accepts `name`, `start` (required; `YYYY-MM-DD` or `today`),
-plus optional `end`, `done`, `important`, and `color`. If the document
-is open, the window updates live; otherwise it opens.
+plus optional `end`, `done`, `important`, `tentative`, and `color`. If
+the document is open, the window updates live; otherwise it opens.
 
 ## Headless rendering
 

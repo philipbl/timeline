@@ -75,6 +75,7 @@ struct EventEditor: View {
 
             Toggle("Done", isOn: $event.done)
             Toggle("Important", isOn: $event.important)
+            Toggle("Tentative", isOn: $event.tentative)
 
             colorRow
 
