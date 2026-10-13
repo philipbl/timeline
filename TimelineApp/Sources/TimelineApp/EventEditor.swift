@@ -59,6 +59,7 @@ struct EventEditor: View {
             TextField("Name", text: $event.name, prompt: Text("Event name"))
                 .textFieldStyle(.roundedBorder)
                 .focused($nameFocused)
+                .onSubmit { onClose() }
 
             DayPicker(label: "Start", day: $event.start)
 
@@ -106,8 +107,8 @@ struct EventEditor: View {
                     .help("Delete event")
                 }
                 Spacer()
-                // ⌘Return closes; plain Return is reserved for the
-                // quick-add field's parse action.
+                // ⌘Return closes from anywhere; plain Return closes only
+                // from the name field (in quick add it parses).
                 Button("Done") { onClose() }
                     .keyboardShortcut(.return, modifiers: .command)
             }
