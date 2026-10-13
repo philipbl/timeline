@@ -55,7 +55,7 @@ Timeline closes every open document window, so ask first.
 | `ConfigYAML.swift` | Parse via Yams; serialize **by hand**. |
 | `TimelineDocument.swift` | `ReferenceFileDocument`; all edits go through `document.update(_:undoManager:)` for undo. |
 | `ContentView.swift` | Window: canvas, + button, toolbar (settings popover, focus, export, share), find panel, editor state, export/print, live reload from disk (`FileWatcher`), per-document zoom/focus saved in UserDefaults. |
-| `PreviewView.swift` | Canvas: bitmap at zoom-dependent scale, click/drag/drop/hover gestures, the `EditorPopover` (hand-rolled `NSPopover`). |
+| `PreviewView.swift` | Canvas: the renderer draws vectors straight into an `NSView` (`CanvasDrawing`; AppKit tiles it, so memory tracks the window, not the canvas); a transparent SwiftUI shape on top takes click/drag/drop/hover; the `EditorPopover` (hand-rolled `NSPopover`). |
 | `EventEditor.swift` | Event form (quick-add NL field for + events, name, dates, Done/Important/Tentative, color, notes). |
 | `EditorControls.swift` | Shared controls: `DayPicker`, `OptionalDayRow`, `CustomPaletteEditor`, `HolidayRow`, `Color(hex:)`, `EditorSwitchStyle`. |
 | `TimelineSettings.swift` | Per-document settings popover (title, dates, days per row, shading, palette, custom holidays). |
@@ -124,6 +124,10 @@ the YAML/MCP round-trip tests in `SelfTests`.
   [.preferredContentSize]`. Editor toggles use a pure-SwiftUI
   `EditorSwitchStyle`, because AppKit `NSSwitch` renders inactive-gray on first
   show inside an `.applicationDefined` popover.
+- Don't go back to rendering the canvas as one bitmap `Image`: SwiftUI and
+  CoreAnimation hold ~3 copies, which reached 430–770 MB for a year-long
+  timeline. `drawPage` skips rows outside the clip so tile redraws stay
+  cheap. Measure with `footprint <pid>`.
 - No double-click handler on the canvas: pairing it with single-click delays
   every click ~0.3 s.
 - In Swift, `"\r\n"` is a **single Character** — split lines on `\.isNewline`,
