@@ -21,6 +21,7 @@ struct EventEditor: View {
     @State private var quickText = ""
     @State private var isParsing = false
     @FocusState private var quickFocused: Bool
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -57,6 +58,7 @@ struct EventEditor: View {
 
             TextField("Name", text: $event.name, prompt: Text("Event name"))
                 .textFieldStyle(.roundedBorder)
+                .focused($nameFocused)
 
             DayPicker(label: "Start", day: $event.start)
 
@@ -114,7 +116,12 @@ struct EventEditor: View {
         .controlSize(.small)
         .padding(14)
         .frame(width: 300)
-        .onAppear { quickFocused = true }
+        .onAppear {
+            // Click-added events skip quick add; start typing the name
+            if showQuickAdd { quickFocused = true } else if event.name.isEmpty {
+                nameFocused = true
+            }
+        }
         .onExitCommand { onCancel() }  // Escape
     }
 

@@ -23,6 +23,9 @@ struct ContentView: View {
     /// True while the open editor is for a freshly added event, so an
     /// empty cancel removes it.
     @State private var isNewEvent = false
+    /// Like isNewEvent, for an event added by clicking a day on the canvas
+    /// (its editor anchors there, not on the + button).
+    @State private var isNewOnCanvas = false
     @State private var showSettings = false
     /// True while a dropped/pasted text is being parsed into an event.
     @State private var isParsingDrop = false
@@ -58,6 +61,8 @@ struct ContentView: View {
                 eventBinding: eventBinding,
                 onDeleteEvent: deleteEvent,
                 onCloseEditor: closeEditor,
+                onCancelEditor: cancelEditor,
+                onAddEvent: addEvent(on:),
                 onDropText: createEvent(fromText:droppedOn:),
                 scrollTarget: $scrollTarget,
                 // Relative phrases ("next Friday") resolve against today,
@@ -249,25 +254,36 @@ struct ContentView: View {
         var start = Day.today()
         if let lower = document.config.timelineStart, start < lower { start = lower }
         if let upper = document.config.timelineEnd, upper < start { start = upper }
-        var config = document.config
-        let event = TimelineEvent(name: "", start: start)
-        let index = config.events.firstIndex { event.start < $0.start }
-            ?? config.events.endIndex
-        config.events.insert(event, at: index)
-        document.update(config, undoManager: undoManager)
+        insertEvent(TimelineEvent(name: "", start: start))
         isNewEvent = true
-        editingEventID = event.id
+    }
+
+    /// Click on an empty day: a new event there, edited on the canvas.
+    private func addEvent(on day: Day) {
+        insertEvent(TimelineEvent(name: "", start: day))
+        isNewOnCanvas = true
     }
 
     private func closeEditor() {
         // A new event left blank is treated as a cancel.
-        if isNewEvent, let id = editingEventID,
+        if isNewEvent || isNewOnCanvas, let id = editingEventID,
            let event = document.config.events.first(where: { $0.id == id }),
            event.name.trimmingCharacters(in: .whitespaces).isEmpty {
             deleteEvent(id)
         }
         editingEventID = nil
         isNewEvent = false
+        isNewOnCanvas = false
+    }
+
+    /// Escape in the canvas editor: discards a click-added event entirely;
+    /// on an existing event just closes (keeps edits).
+    private func cancelEditor() {
+        if isNewOnCanvas, let id = editingEventID {
+            deleteEvent(id)
+        } else {
+            closeEditor()
+        }
     }
 
     private func deleteEvent(_ id: UUID) {
@@ -275,6 +291,7 @@ struct ContentView: View {
             document.config.removingEvent(id: id), undoManager: undoManager)
         editingEventID = nil
         isNewEvent = false
+        isNewOnCanvas = false
     }
 
     /// Create an event from text dropped on the canvas. The natural-language
@@ -308,12 +325,13 @@ struct ContentView: View {
 
     /// Insert an event in chronological order and open it for editing.
     private func insertEvent(_ event: TimelineEvent) {
+        // Close (and discard a blank new event) before the config snapshot
+        closeEditor()
         var config = document.config
         let index = config.events.firstIndex { event.start < $0.start }
             ?? config.events.endIndex
         config.events.insert(event, at: index)
         document.update(config, undoManager: undoManager)
-        isNewEvent = false
         editingEventID = event.id
     }
 
@@ -453,9 +471,9 @@ struct ContentView: View {
     /// immediately would silently fail when the canvas is zoomed in.
     private func openEvent(_ id: UUID) {
         closeSearch()
-        isNewEvent = false
         scrollTarget = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            closeEditor()
             editingEventID = id
         }
     }

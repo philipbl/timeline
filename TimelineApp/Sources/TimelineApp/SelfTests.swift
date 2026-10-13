@@ -453,6 +453,28 @@ enum SelfTests {
                 renderer.day(
                     at: CGPoint(x: 5000, y: row2.baselineY)) == day("2026-07-07"))
         }
+        test("dayColumnForClickToAdd") {
+            // 30 days -> two rows of 22 and 8
+            let config = makeConfig(end: "2026-07-07", events: [point("A", "2026-06-10")])
+            let renderer = TimelineRenderer(config: config, layout: .continuous)
+            let row1 = renderer.rows[0]
+            let row2 = renderer.rows[1]
+            let x2 = renderer.leftMargin + 2 * renderer.dayWidth
+            // Date labels below row 1's axis and its label area above
+            expect(renderer.dayColumn(at: CGPoint(x: x2, y: row1.baselineY - 20))
+                == day("2026-06-10"))
+            expect(renderer.dayColumn(at: CGPoint(x: x2, y: row1.baselineY + 30))
+                == day("2026-06-10"))
+            // Just under row 1's band is row 2's label area
+            expect(
+                renderer.dayColumn(
+                    at: CGPoint(x: x2, y: row1.baselineY - renderer.rowDepthBelow - 1))
+                    == day("2026-07-02"))
+            // Past the short row's end, the title, and the bottom margin
+            expect(renderer.dayColumn(at: CGPoint(x: 5000, y: row2.baselineY)) == nil)
+            expect(renderer.dayColumn(at: CGPoint(x: x2, y: renderer.canvasSize.height)) == nil)
+            expect(renderer.dayColumn(at: CGPoint(x: x2, y: 1)) == nil)
+        }
         test("hitTestFindsBarEnds") {
             let bar = span("Bar", "2026-06-13", "2026-06-16")
             let config = makeConfig(end: "2026-06-22", events: [bar])

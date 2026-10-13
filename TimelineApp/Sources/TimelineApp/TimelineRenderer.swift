@@ -721,6 +721,24 @@ struct TimelineRenderer {
         return row.startDay.shifted(days: clamped)
     }
 
+    /// The day column a click lands in, for click-to-add (continuous
+    /// layout): the row whose band — its label area above the axis down
+    /// through its date labels below — contains the point, and that row's
+    /// nearest day. nil over the title, below the last row, or more than
+    /// half a day past either end of the row.
+    func dayColumn(at point: CGPoint) -> Day? {
+        // Rows tile the canvas top to bottom; a row's band ends
+        // rowDepthBelow under its baseline, where the next one begins.
+        guard point.y <= canvasSize.height - topMargin,
+              let row = rows
+                .filter({ $0.baselineY - rowDepthBelow <= point.y })
+                .max(by: { $0.baselineY < $1.baselineY })
+        else { return nil }
+        let index = Int(((point.x - leftMargin) / dayWidth).rounded())
+        guard (0..<row.numDays).contains(index) else { return nil }
+        return row.startDay.shifted(days: index)
+    }
+
     // MARK: - Drawing
 
     /// Draw one page (paged) or the whole canvas (continuous, page 0)

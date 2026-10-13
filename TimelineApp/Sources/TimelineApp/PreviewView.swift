@@ -25,6 +25,10 @@ struct PreviewView: View {
     var eventBinding: ((UUID) -> Binding<TimelineEvent>?)?
     var onDeleteEvent: ((UUID) -> Void)?
     var onCloseEditor: (() -> Void)?
+    /// Escape in the editor (discards a click-added event, else closes).
+    var onCancelEditor: (() -> Void)?
+    /// Click on an empty day: add a new event there.
+    var onAddEvent: ((Day) -> Void)?
     /// Text dropped on the canvas, with the day under the drop point, so a
     /// new event can be parsed/created from it.
     var onDropText: ((String, Day) -> Void)?
@@ -75,7 +79,10 @@ struct PreviewView: View {
                     .equatable()
                     .gesture(dragEventGesture(
                                 displayWidth: displayWidth, canvas: canvas))
-                            // Single-click an event opens its editor.
+                            // Single-click an event opens its editor; an
+                            // empty day adds one there. Date labels below
+                            // the axis are never under a bar, so they
+                            // always add.
                             // (No double-click handler here: pairing it
                             // with single-click delays the click ~0.3s
                             // while SwiftUI disambiguates. Zoom reset lives
@@ -87,12 +94,19 @@ struct PreviewView: View {
                                 let renderer = TimelineRenderer(
                                     config: config, layout: .continuous)
                                 if let hit = renderer.eventHit(at: point) {
+                                    // Closing first discards a still-blank
+                                    // click-added event
+                                    onCloseEditor?()
                                     isNewEvent = false
                                     editingEventID = hit.id
                                 } else if editingEventID != nil {
                                     // Our popover (applicationDefined) won't
-                                    // auto-close, so an empty-canvas tap does.
+                                    // auto-close, so an empty-canvas tap
+                                    // does — without adding, so clicking
+                                    // away doesn't create stray events.
                                     onCloseEditor?()
+                                } else if let day = renderer.dayColumn(at: point) {
+                                    onAddEvent?(day)
                                 }
                             }
                             .onContinuousHover { phase in
@@ -203,7 +217,7 @@ struct PreviewView: View {
     }
 
     /// The editor popover's content for the event being edited (existing
-    /// events only — new events use the + button's popover).
+    /// and click-added events — + button events use its own popover).
     @ViewBuilder
     private var editorContent: some View {
         if let id = editingEventID, let binding = eventBinding?(id) {
@@ -211,12 +225,14 @@ struct PreviewView: View {
                 event: binding,
                 onDelete: { onDeleteEvent?(id) },
                 onClose: { onCloseEditor?() },
-                // Escape on an existing event just closes (keeps edits)
-                onCancel: { onCloseEditor?() },
+                onCancel: { onCancelEditor?() },
                 referenceDay: referenceDay,
                 showQuickAdd: false,
+                // A click-added event has no palette slot until named
                 resolvedColorHex: TimelineRenderer.resolvedColorHex(
-                    for: config)[id] ?? TimelineRenderer.eventColors[0])
+                    for: config)[id]
+                    ?? TimelineRenderer.predictedColorHex(
+                        for: config, start: binding.wrappedValue.start))
         }
     }
 
@@ -244,7 +260,17 @@ struct PreviewView: View {
                 x: p.markerX * scale, y: yBottom,
                 width: 1, height: max(yTop - yBottom, 1))
         }
-        return .zero
+        // A click-added event isn't laid out until named: anchor at its day,
+        // clearing the lowest label slot so its name shows as it's typed.
+        guard let start = config.events.first(where: { $0.id == id })?.start,
+              let row = renderer.rows.last(where: { $0.startDay <= start })
+        else { return .zero }
+        let x = renderer.leftMargin
+            + CGFloat(row.startDay.days(until: start)) * renderer.dayWidth
+        let height = renderer.eventBaseOffset + renderer.labelFontSize * 0.8 + 6
+        return CGRect(
+            x: x * scale, y: row.baselineY * scale,
+            width: 1, height: height * scale)
     }
 
     /// Load dropped text and hand it to `onDropText` with the day under the
