@@ -12,8 +12,10 @@ Swift 6.x, macOS 26 SDK; deployment target macOS 14. Package is in
 
 ## Current state
 
-- Latest release: **v2.3.0** (2026-10-12) — click an empty day to add an
-  event, tentative events. `main` is the release branch.
+- Latest release: **v2.3.1** (2026-10-12) — canvas draws directly instead
+  of as a bitmap (~430–770 MB → ~96 MB for a year-long timeline). v2.3.0
+  added click-an-empty-day-to-add and tentative events. `main` is the
+  release branch.
 - Deferred ideas (discussed, not built): drag across empty days to create a
   range event; a hover cue showing which day a click would add.
 - Known gaps: no VoiceOver (the canvas is one flat bitmap — biggest gap); no
