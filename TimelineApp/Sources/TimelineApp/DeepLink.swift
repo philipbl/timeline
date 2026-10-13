@@ -4,7 +4,7 @@ import Foundation
 /// timeline:// URL scheme, for Shortcuts, scripts, and other apps.
 ///
 ///   timeline://add-event?file=~/plan.timeline&name=Dentist&start=2026-06-15
-///       Optional: end, done, important, color (#RRGGBB), and
+///       Optional: end, done, important, tentative, color (#RRGGBB), and
 ///       start/end accept "today". Opens the document unless it is
 ///       already open (open windows live-update via the file watcher).
 ///   timeline://open?file=~/plan.timeline
@@ -90,6 +90,7 @@ enum DeepLink {
         }
         event.done = params["done"] == "true"
         event.important = params["important"] == "true"
+        event.tentative = params["tentative"] == "true"
         event.colorHex = params["color"]
 
         config.events.append(event)

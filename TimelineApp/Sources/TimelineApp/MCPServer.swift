@@ -140,6 +140,7 @@ enum MCPServer {
                                 "end": ["type": "string", "description": dateNote + " Optional."],
                                 "done": ["type": "boolean"],
                                 "important": ["type": "boolean"],
+                                "tentative": ["type": "boolean"],
                                 "color": ["type": "string", "description": "Optional #RRGGBB override."],
                             ],
                             required: ["name", "start"]),
@@ -162,6 +163,7 @@ enum MCPServer {
                     "end": ["type": "string", "description": dateNote + " Or \"none\" to clear."],
                     "done": ["type": "boolean"],
                     "important": ["type": "boolean"],
+                    "tentative": ["type": "boolean"],
                     "color": ["type": "string"],
                 ],
                 required: ["path", "name"]),
@@ -329,6 +331,7 @@ enum MCPServer {
             }
             event.done = item["done"] as? Bool ?? false
             event.important = item["important"] as? Bool ?? false
+            event.tentative = item["tentative"] as? Bool ?? false
             event.colorHex = item["color"] as? String
             config.events.append(event)
             added.append("\(name) (\(start)\(event.end.map { " – \($0)" } ?? ""))")
@@ -371,6 +374,7 @@ enum MCPServer {
         }
         if let done = args["done"] as? Bool { event.done = done }
         if let important = args["important"] as? Bool { event.important = important }
+        if let tentative = args["tentative"] as? Bool { event.tentative = tentative }
         if let color = args["color"] as? String { event.colorHex = color }
 
         config.events[index] = event
