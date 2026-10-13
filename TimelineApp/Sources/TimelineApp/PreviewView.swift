@@ -2,10 +2,9 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Live-rendered timeline canvas. Renders a bitmap whose resolution
-/// tracks the current zoom (so it stays sharp without PDFKit's document
-/// reload flash), on a single uniform background color. Pinch to zoom,
-/// two-finger pan, double-click to reset.
+/// Live timeline canvas: the renderer draws vectors straight into a view
+/// (sharp at any zoom, no PDFKit reload flash), on a single uniform
+/// background color. Pinch to zoom, two-finger pan.
 struct PreviewView: View {
     let config: TimelineConfig
     /// Called while an event is dragged on the canvas: (event id, part
@@ -49,7 +48,6 @@ struct PreviewView: View {
     @State private var dropTargeted = false
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.25...3
-    private static let maxRenderScale: CGFloat = 6  // ~432 dpi
 
     var body: some View {
         let dark = colorScheme == .dark
@@ -60,19 +58,15 @@ struct PreviewView: View {
         GeometryReader { geo in
             let fitWidth = max(geo.size.width - 48, 200)
             let displayWidth = fitWidth * zoom
-            // Render at the resolution the current zoom needs (x2 for
-            // Retina), bucketed to whole numbers to limit re-renders
-            let renderScale = min(
-                max(ceil(displayWidth * 2 / canvas.width), 1), Self.maxRenderScale)
 
             ScrollViewReader { proxy in
             ScrollView([.vertical, .horizontal]) {
                 Group {
                     let scale = displayWidth / canvas.width
                     // Equatable so changing editingEventID/selection doesn't
-                    // re-render the (expensive) bitmap — only config/zoom do.
+                    // redraw the canvas — only config/zoom/appearance do.
                     TimelineCanvasImage(
-                        config: config, dark: dark, renderScale: renderScale,
+                        config: config, dark: dark,
                         showToday: showTodayMarker, displayWidth: displayWidth,
                         aspect: canvas.width / canvas.height
                     )
@@ -577,33 +571,77 @@ private struct EditorPopover<Content: View>: NSViewRepresentable {
     }
 }
 
-/// The rendered timeline bitmap, isolated as an Equatable view so it only
-/// re-renders when the document, zoom, or appearance changes — not when
-/// the selection/editor state changes.
+/// The timeline drawing, isolated as an Equatable view so it only redraws
+/// when the document, zoom, or appearance changes — not when the
+/// selection/editor state changes.
 private struct TimelineCanvasImage: View, Equatable {
     let config: TimelineConfig
     let dark: Bool
-    let renderScale: CGFloat
     let showToday: Bool
     let displayWidth: CGFloat
     let aspect: CGFloat
 
     static func == (lhs: TimelineCanvasImage, rhs: TimelineCanvasImage) -> Bool {
         lhs.config == rhs.config && lhs.dark == rhs.dark
-            && lhs.renderScale == rhs.renderScale && lhs.showToday == rhs.showToday
-            && lhs.displayWidth == rhs.displayWidth
+            && lhs.showToday == rhs.showToday && lhs.displayWidth == rhs.displayWidth
     }
 
     var body: some View {
-        let bg = TimelineRenderer.cg(dark ? "#1B1B20" : "#FAFAFC")
-        if let image = Exporter.continuousImage(
-            for: config, theme: dark ? .dark : .light,
-            background: bg, scale: renderScale, showToday: showToday)
-        {
-            Image(decorative: image, scale: renderScale)
-                .resizable()
-                .aspectRatio(aspect, contentMode: .fit)
-                .frame(width: displayWidth)
+        // The drawing view ignores the mouse; this shape takes the canvas
+        // gestures, drops, and hover instead.
+        Color.clear
+            .frame(width: displayWidth, height: displayWidth / aspect)
+            .contentShape(Rectangle())
+            .background(
+                CanvasDrawing(
+                    renderer: TimelineRenderer(
+                        config: config, layout: .continuous,
+                        theme: dark ? .dark : .light, showToday: showToday),
+                    background: TimelineRenderer.cg(dark ? "#1B1B20" : "#FAFAFC")))
+    }
+}
+
+/// Draws the renderer's vector output straight into an NSView. AppKit
+/// tiles large views and only rasterizes what's on screen; the old
+/// whole-canvas bitmap (held ~3x by SwiftUI/CoreAnimation) cost ~130 MB
+/// per window for a year-long timeline, this ~30 MB.
+private struct CanvasDrawing: NSViewRepresentable {
+    let renderer: TimelineRenderer
+    let background: CGColor
+
+    func makeNSView(context: Context) -> View { View() }
+
+    func updateNSView(_ view: View, context: Context) {
+        view.renderer = renderer
+        view.background = background
+        view.needsDisplay = true
+    }
+
+    final class View: NSView {
+        var renderer: TimelineRenderer?
+        var background: CGColor?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            layerContentsRedrawPolicy = .duringViewResize
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        /// SwiftUI owns the gestures on this view.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func draw(_ dirtyRect: NSRect) {
+            guard let renderer, let ctx = NSGraphicsContext.current?.cgContext
+            else { return }
+            if let background {
+                ctx.setFillColor(background)
+                ctx.fill(dirtyRect)
+            }
+            // Unflipped NSView: bottom-left origin, same as the renderer
+            let scale = bounds.width / renderer.canvasSize.width
+            ctx.scaleBy(x: scale, y: scale)
+            renderer.drawPage(0, in: ctx)
         }
     }
 }

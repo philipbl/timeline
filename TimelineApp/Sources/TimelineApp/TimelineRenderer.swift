@@ -748,8 +748,16 @@ struct TimelineRenderer {
     /// Draw one page (paged) or the whole canvas (continuous, page 0)
     /// into a PDF-coordinate (bottom-left origin) context.
     func drawPage(_ pageIndex: Int, in ctx: CGContext) {
+        // The live canvas redraws a tile at a time; skip rows outside it.
+        // Rows stack contiguously: each spans from rowDepthBelow under its
+        // baseline up to where the row above ends (or the page top).
+        let clip = ctx.boundingBoxOfClipPath
         drawHeader(in: ctx)
+        var rowTop = canvasSize.height
         for row in rows where row.pageIndex == pageIndex {
+            let rowBottom = row.baselineY - rowDepthBelow
+            defer { rowTop = rowBottom }
+            guard rowBottom <= clip.maxY, rowTop >= clip.minY else { continue }
             drawTimelineRow(row, in: ctx)
             drawEvents(row, in: ctx)
             drawPastDayMarkers(row, in: ctx)
