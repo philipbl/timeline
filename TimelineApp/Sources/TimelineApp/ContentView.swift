@@ -133,6 +133,13 @@ struct ContentView: View {
         .focusedSceneValue(
             \.timelineActions,
             TimelineActions(
+                newEvent: {
+                    // The editor anchors to +, which focus mode hides: show
+                    // it first, then open the editor once it's on screen.
+                    guard isFocusMode else { return startNewEvent() }
+                    isFocusMode = false
+                    DispatchQueue.main.async(execute: startNewEvent)
+                },
                 exportPDF: exportPDF,
                 exportPNG: exportPNG,
                 printTimeline: printTimeline,

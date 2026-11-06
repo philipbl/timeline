@@ -104,9 +104,11 @@ the YAML/MCP round-trip tests in `SelfTests`.
   **upward**, so the date labels are never covered — clicking them always
   adds, even under a multi-day bar.
 - While an editor is open, an empty click only closes it (never adds).
-- "+" button → new event on today, editor anchored to the button, with the
-  quick-add field. Return in the name field closes the editor; ⌘Return
-  closes from anywhere.
+- "+" button or ⌘N (New Event; New Timeline is ⇧⌘N) → new event on today,
+  editor anchored to the button (⌘N leaves focus mode to show it), with the
+  quick-add field. Return there fills the fields once, then the field hides
+  and Name takes focus. Return in the name field closes the editor;
+  ⌘Return closes from anywhere.
 - New events left blank are discarded on close; Escape discards a new event
   and just closes an existing one. Editor state in `ContentView`:
   `editingEventID`, `isNewEvent` (+ button), `isNewOnCanvas` (click-added).

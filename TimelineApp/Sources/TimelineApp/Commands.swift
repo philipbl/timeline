@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Actions the focused document window exposes to the menu bar.
 struct TimelineActions {
+    var newEvent: () -> Void
     var exportPDF: () -> Void
     var exportPNG: () -> Void
     var printTimeline: () -> Void
@@ -34,6 +35,18 @@ struct TimelineCommands: Commands {
                 NSApplication.shared.orderFrontStandardAboutPanel(
                     options: [.credits: Self.aboutCredits])
             }
+        }
+
+        // ⌘N adds an event (the common action); a new document moves to
+        // ⇧⌘N. Replacing .newItem swaps only "New"; Open…/Open Recent stay.
+        CommandGroup(replacing: .newItem) {
+            Button("New Event") { actions?.newEvent() }
+                .keyboardShortcut("n", modifiers: .command)
+                .disabled(actions == nil)
+            Button("New Timeline") {
+                NSDocumentController.shared.newDocument(nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .saveItem) {
