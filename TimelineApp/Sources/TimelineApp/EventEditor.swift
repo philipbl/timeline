@@ -20,13 +20,16 @@ struct EventEditor: View {
 
     @State private var quickText = ""
     @State private var isParsing = false
+    /// Set once quick add has filled the fields: the field hides so a
+    /// second entry can't overwrite this event (Escape + "+" to retry).
+    @State private var quickApplied = false
     @FocusState private var quickFocused: Bool
     @FocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Natural-language quick add (new events only)
-            if showQuickAdd {
+            // Natural-language quick add (new events only, once)
+            if showQuickAdd && !quickApplied {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Image(systemName: "wand.and.stars")
@@ -159,6 +162,8 @@ struct EventEditor: View {
                     event.start = parsed.start
                     event.end = parsed.end
                     quickText = ""
+                    quickApplied = true
+                    nameFocused = true  // Return again closes
                 }
                 isParsing = false
             }
