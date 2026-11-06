@@ -31,6 +31,8 @@ struct PreviewView: View {
     /// Text dropped on the canvas, with the day under the drop point, so a
     /// new event can be parsed/created from it.
     var onDropText: ((String, Day) -> Void)?
+    /// Images or PDFs dropped on the canvas, for image import.
+    var onDropImages: (([ImportItem]) -> Void)?
     /// Set to an event id (e.g. from search) to scroll it into view; reset
     /// to nil once handled.
     @Binding var scrollTarget: UUID?
@@ -267,24 +269,39 @@ struct PreviewView: View {
             width: 1, height: height * scale)
     }
 
-    /// Load dropped text and hand it to `onDropText` with the day under the
-    /// drop point. Returns true if any provider supplied text.
+    /// Images/PDFs go to `onDropImages`; otherwise load dropped text and
+    /// hand it to `onDropText` with the day under the drop point. Returns
+    /// true if the drop was taken.
     private func handleTextDrop(
         _ providers: [NSItemProvider], at location: CGPoint,
         displayWidth: CGFloat, canvas: CGSize
     ) -> Bool {
-        guard let onDropText else { return false }
+        guard let onDropText, let provider = providers.first else { return false }
         let scale = displayWidth / canvas.width
         let point = CGPoint(
             x: location.x / scale, y: canvas.height - location.y / scale)
         let day = TimelineRenderer(config: config, layout: .continuous).day(at: point)
 
-        guard let provider = providers.first else { return false }
-        loadText(from: provider) { text in
-            guard let text,
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { return }
-            DispatchQueue.main.async { onDropText(text, day) }
+        let dropText = {
+            loadText(from: provider) { text in
+                guard let text,
+                      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { return }
+                DispatchQueue.main.async { onDropText(text, day) }
+            }
+        }
+
+        // Calendar events (.ics) stay on the text path even if they carry
+        // an image flavor; a dropped file that isn't an image/PDF falls
+        // back to text too (as before).
+        let imageProviders = providers.filter(ImageImport.mayHoldImage)
+        if let onDropImages, !imageProviders.isEmpty,
+           !provider.hasItemConformingToTypeIdentifier("com.apple.ical.ics") {
+            ImageImport.loadItems(from: imageProviders) { items in
+                items.isEmpty ? dropText() : onDropImages(items)
+            }
+        } else {
+            dropText()
         }
         return true
     }

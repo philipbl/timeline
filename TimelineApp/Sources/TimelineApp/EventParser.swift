@@ -39,25 +39,34 @@ enum EventParser {
         _ rawText: String, relativeTo today: Day = .today(),
         defaultYear: Int? = nil
     ) -> ParsedEvent? {
-        var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip a leading markdown bullet or checkbox
-        text = text.replacingOccurrences(
+        let text = stripBullet(rawText)
+        guard !text.isEmpty else { return nil }
+        return parseDated(text, relativeTo: today, defaultYear: defaultYear)
+            ?? ParsedEvent(name: text, start: today, end: nil)
+    }
+
+    /// Like `parse`, but nil when the line has no date (image import skips
+    /// undated lines instead of putting them on today).
+    static func parseDated(
+        _ rawText: String, relativeTo today: Day = .today(),
+        defaultYear: Int? = nil
+    ) -> ParsedEvent? {
+        let text = stripBullet(rawText)
+        let year = defaultYear ?? today.year
+        guard !text.isEmpty,
+              let (range, start, end) = findDateExpression(
+                in: text, today: today, year: year)
+        else { return nil }
+        let name = cleanTitle(byRemoving: range, from: text)
+        // If stripping the date leaves nothing, keep the whole text
+        return ParsedEvent(name: name.isEmpty ? text : name, start: start, end: end)
+    }
+
+    /// Trim, and drop a leading markdown bullet or checkbox.
+    private static func stripBullet(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(
             of: #"^\s*(?:[-*+]|\d+\.)\s+(?:\[[ xX]?\]\s+)?"#,
             with: "", options: .regularExpression)
-        guard !text.isEmpty else { return nil }
-
-        let year = defaultYear ?? today.year
-
-        if let (range, start, end) = findDateExpression(
-            in: text, today: today, year: year)
-        {
-            let name = cleanTitle(byRemoving: range, from: text)
-            // If stripping the date leaves nothing, keep the whole text
-            return ParsedEvent(
-                name: name.isEmpty ? text : name, start: start, end: end)
-        }
-
-        return ParsedEvent(name: text, start: today, end: nil)
     }
 
     /// Parse a dragged calendar event (iCalendar / .ics, e.g. from

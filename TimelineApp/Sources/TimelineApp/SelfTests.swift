@@ -725,6 +725,94 @@ enum SelfTests {
             expect(EventParser.parse("CVPR (Nov 16)", relativeTo: ref)?.name == "CVPR")
             expect(EventParser.parse("Retreat [Jun 3]", relativeTo: ref)?.name == "Retreat")
         }
+        test("parserDated") {
+            let ref = day("2026-11-06")
+            expect(EventParser.parseDated("CSI comms", relativeTo: ref) == nil)
+            expect(EventParser.parse("CSI comms", relativeTo: ref)?.start == ref)
+        }
+
+        // Image import
+        test("imageReplyParsing") {
+            let today = day("2026-11-06")  // a Friday
+            let reply = """
+                Summer Salad Social | 06-09 | NONE | Tuesday | 7 PM, Finlayson's Backyard
+                Conference | 2027-01-27 | 01-29 | NONE | NONE
+                Winter break | 12-20 | 01-05 | NONE | NONE
+                1. RF-LSK to MobiSys | 11-27 | NONE | NONE | NONE
+                Sale | 2026-11-07 | NONE | Sat | NONE
+                Here are the events I found:
+                No date | soon | NONE | NONE | NONE
+                """
+            let events = ImageImport.parseReply(reply, today: today)
+            expect(events.count == 5, "\(events.count)")
+            guard events.count == 5 else { return }
+            // Yearless → next occurrence; printed Tuesday, but 2027-06-09
+            // is a Wednesday
+            expect(events[0].start == day("2027-06-09"))
+            expect(events[0].notes == "7 PM, Finlayson's Backyard")
+            expect(events[0].mismatchedWeekday == "Tuesday")
+            // Explicit year kept; yearless end takes the start's year
+            expect(events[1].start == day("2027-01-27"))
+            expect(events[1].end == day("2027-01-29"))
+            expect(events[1].notes == "")
+            // End rolls into the next year
+            expect(events[2].start == day("2026-12-20"))
+            expect(events[2].end == day("2027-01-05"))
+            // List marker dropped
+            expect(events[3].name == "RF-LSK to MobiSys")
+            // Matching weekday isn't flagged
+            expect(events[4].printedWeekday == "Saturday")
+            expect(events[4].mismatchedWeekday == nil)
+            expect(ImageImport.parseReply("NONE", today: today).isEmpty)
+        }
+        test("imageBasicFallback") {
+            // OCR text from the bake-off images
+            let ocr = """
+                PAPERS
+                O. POLAR SCOPE → CUPR (NOV 16)
+                3. TRUCK SENSORS → DCOSS - 1OT (JAN 27)
+                CSI COMMS
+                Tuesday, June 9th
+                """
+            let events = ImageImport.basicCandidates(ocr: ocr, today: day("2026-11-06"))
+            expect(events.count == 3, "\(events.count)")
+            guard events.count == 3 else { return }
+            expect(events[0].name == "O. POLAR SCOPE → CUPR", events[0].name)
+            expect(events[0].start == day("2026-11-16"))
+            // Past yearless dates roll forward
+            expect(events[1].name == "TRUCK SENSORS → DCOSS - 1OT", events[1].name)
+            expect(events[1].start == day("2027-01-27"))
+            // The weekday is checked, not parsed as "next Tuesday"
+            expect(events[2].start == day("2027-06-09"))
+            expect(events[2].mismatchedWeekday == "Tuesday")
+        }
+        test("imageImportReview") {
+            var config = makeConfig(start: "2026-11-01", end: "2026-12-31", events: [
+                point("Kickoff", "2026-11-10"),
+            ])
+            let dup = ImportCandidate(name: " kickoff", start: day("2026-11-10"))
+            let early = ImportCandidate(
+                name: "Prep", start: day("2026-10-20"), end: day("2026-10-22"),
+                notes: "Room 4")
+            let late = ImportCandidate(name: "Launch", start: day("2027-01-15"))
+            let unnamed = ImportCandidate(name: " ", start: day("2026-11-20"))
+            expect(ImageImport.isDuplicate(dup, in: config.events))
+            expect(!ImageImport.isDuplicate(late, in: config.events))
+            expect(!ImageImport.isOutOfRange(dup, in: config))
+            expect(ImageImport.isOutOfRange(early, in: config))
+            expect(ImageImport.isOutOfRange(late, in: config))
+
+            config = ImageImport.adding([late, unnamed, early], to: config)
+            // Unnamed skipped; sorted; bounds stretched to fit
+            expect(config.events.map(\.name) == ["Prep", "Kickoff", "Launch"])
+            expect(config.events[0].notes == "Room 4")
+            expect(config.events[0].end == day("2026-10-22"))
+            expect(config.timelineStart == day("2026-10-20"))
+            expect(config.timelineEnd == day("2027-01-15"))
+            // Open-ended timelines have no range to stretch
+            let open = ImageImport.adding([late], to: TimelineConfig())
+            expect(open.timelineStart == nil && open.timelineEnd == nil)
+        }
 
         // Exports
         test("pdfExportProducesValidData") {

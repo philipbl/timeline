@@ -17,6 +17,11 @@ app:
 		$(APP)/Contents/Info.plist
 	cp TimelineApp/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	cp TimelineApp/DocIcon.icns $(APP)/Contents/Resources/DocIcon.icns
+	# llama.cpp, for Gemma 4 image import (rpath @executable_path/../Frameworks)
+	mkdir -p $(APP)/Contents/Frameworks
+	ditto TimelineApp/.build/release/llama.framework \
+		$(APP)/Contents/Frameworks/llama.framework
+	codesign --force -s - $(APP)/Contents/Frameworks/llama.framework
 	# Quick Look preview extension
 	mkdir -p $(APP)/Contents/PlugIns/TimelinePreview.appex/Contents/MacOS
 	cp TimelineApp/.build/release/TimelineQuickLook \

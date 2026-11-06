@@ -44,6 +44,33 @@ enum Main {
             }
         }
 
+        // Image import without the UI: Timeline --extract-events file… [--basic]
+        // Prints NAME | START | END | WEEKDAY | NOTES per event found.
+        if args.count >= 3, args[1] == "--extract-events" {
+            let items = args.dropFirst(2).filter { $0 != "--basic" }
+                .map { ImportItem.file(URL(fileURLWithPath: $0)) }
+            Task {
+                let useGemma = await GemmaModel.isSupported
+                    && GemmaModel.shared.state == .ready && !args.contains("--basic")
+                for page in ImageImport.pages(from: items) {
+                    do {
+                        for event in try await ImageImport.read(
+                            page, today: .today(), useGemma: useGemma) {
+                            print([event.name, event.start.description,
+                                   event.end?.description ?? "NONE",
+                                   event.printedWeekday ?? "NONE", event.notes]
+                                .joined(separator: " | "))
+                        }
+                    } catch {
+                        FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
+                    }
+                }
+                await GemmaRunner.shared.unload()
+                exit(0)
+            }
+            dispatchMain()
+        }
+
         // Golden-image check: Timeline --compare a.png b.png maxPercent
         if args.count >= 5, args[1] == "--compare" {
             guard let threshold = Double(args[4]),
