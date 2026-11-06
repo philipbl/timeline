@@ -163,13 +163,23 @@ enum EventParser {
             let leftText = String(text[text.startIndex..<sepRange.lowerBound])
             let rightText = String(text[sepRange.upperBound...])
 
-            guard let (leftRange, startDay) = findSingleDate(
+            guard let (leftRange, leftDay) = findSingleDate(
                 in: leftText, today: today, year: year, anchorAtEnd: true)
             else { continue }
             guard let (rightRel, endDayRaw) = findSingleDate(
                 in: rightText, today: today, year: year,
-                contextMonth: startDay.month)
+                contextMonth: leftDay.month)
             else { continue }
+
+            // A year only on the right covers both ends: "Nov 20 - Dec 30,
+            // 2025", or "Dec 28 - Jan 3, 2027" (start in the year before).
+            var startDay = leftDay
+            let yearPattern = #"\b\d{4}\b"#
+            if leftText.range(of: yearPattern, options: .regularExpression) == nil,
+               rightText.range(of: yearPattern, options: .regularExpression) != nil {
+                startDay.year = endDayRaw.year
+                if endDayRaw < startDay { startDay.year -= 1 }
+            }
 
             // The end might land before the start when only a day was
             // given on the right ("Jul 31 - 2" never happens, but guard)
@@ -292,6 +302,9 @@ enum EventParser {
     ) -> String {
         var title = text
         title.removeSubrange(range)
+        // Brackets that only held the date: "CVPR (Nov 16)" → "CVPR"
+        title = title.replacingOccurrences(
+            of: #"[(\[]\s*[)\]]"#, with: "", options: .regularExpression)
         // Drop connector words left dangling where the date was
         title = title.replacingOccurrences(
             of: #"(?i)\s*\b(on|from|due|by|the|at)\b\s*$"#,

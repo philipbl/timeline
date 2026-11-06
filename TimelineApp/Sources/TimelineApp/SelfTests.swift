@@ -707,6 +707,25 @@ enum SelfTests {
             expect(parsed?.end == day("2026-07-07"))
         }
 
+        test("parserRangeYearOnRight") {
+            let ref = day("2026-11-06")
+            let range = EventParser.parse("Break Nov 20 - Dec 30, 2025", relativeTo: ref)
+            expect(range?.start == day("2025-11-20"))
+            expect(range?.end == day("2025-12-30"))
+            let wrap = EventParser.parse("Trip Dec 28 - Jan 3, 2027", relativeTo: ref)
+            expect(wrap?.start == day("2026-12-28"))
+            expect(wrap?.end == day("2027-01-03"))
+            // No year anywhere: unchanged (current year)
+            let plain = EventParser.parse("Camp Jul 1-7", relativeTo: ref)
+            expect(plain?.start == day("2026-07-01"))
+            expect(plain?.end == day("2026-07-07"))
+        }
+        test("parserDropsEmptiedBrackets") {
+            let ref = day("2026-11-06")
+            expect(EventParser.parse("CVPR (Nov 16)", relativeTo: ref)?.name == "CVPR")
+            expect(EventParser.parse("Retreat [Jun 3]", relativeTo: ref)?.name == "Retreat")
+        }
+
         // Exports
         test("pdfExportProducesValidData") {
             let config = makeConfig(
