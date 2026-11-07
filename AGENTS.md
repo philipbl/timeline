@@ -37,6 +37,9 @@ mention it are historical.
   >   dates.
   > - Fixed: recent documents (Dock menu, File → Open Recent) no longer
   >   disappear when Timeline is updated.
+  > - Fixed: dragging the PDF or PNG button into Slack, Chrome, and other
+  >   Chromium-based apps works, and no longer lights up Timeline's own
+  >   window.
 - Deferred ideas (discussed, not built): drag across empty days to create a
   range event; a hover cue showing which day a click would add.
 - Known gaps: no VoiceOver (the canvas is one flat bitmap — biggest gap); no

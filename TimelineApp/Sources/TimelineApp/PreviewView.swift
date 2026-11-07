@@ -117,12 +117,12 @@ struct PreviewView: View {
                             // text with several strategies in the handler.
                             .onDrop(
                                 of: [.data, .url],
-                                isTargeted: $dropTargeted
-                            ) { providers, location in
-                                handleTextDrop(
-                                    providers, at: location,
-                                    displayWidth: displayWidth, canvas: canvas)
-                            }
+                                delegate: CanvasDrop(isTargeted: $dropTargeted) {
+                                    providers, location in
+                                    handleTextDrop(
+                                        providers, at: location,
+                                        displayWidth: displayWidth, canvas: canvas)
+                                })
                             .overlay {
                                 if dropTargeted {
                                     RoundedRectangle(cornerRadius: 4)
@@ -267,6 +267,24 @@ struct PreviewView: View {
         return CGRect(
             x: x * scale, y: row.baselineY * scale,
             width: 1, height: height * scale)
+    }
+
+    /// The canvas's drop target: like `onDrop(of:isTargeted:)`, but refuses
+    /// Timeline's own PDF/PNG drags from the export buttons.
+    private struct CanvasDrop: DropDelegate {
+        @Binding var isTargeted: Bool
+        let perform: ([NSItemProvider], CGPoint) -> Bool
+
+        func validateDrop(info: DropInfo) -> Bool {
+            info.hasItemsConforming(to: [.data, .url])
+                && !info.hasItemsConforming(to: [ShareableTimeline.dragMarker])
+        }
+        func dropEntered(info: DropInfo) { isTargeted = true }
+        func dropExited(info: DropInfo) { isTargeted = false }
+        func performDrop(info: DropInfo) -> Bool {
+            isTargeted = false
+            return perform(info.itemProviders(for: [.data, .url]), info.location)
+        }
     }
 
     /// Images/PDFs go to `onDropImages`; otherwise load dropped text and

@@ -213,13 +213,13 @@ struct ContentView: View {
                 Button(action: exportPDF) {
                     Label("Export PDF", systemImage: "doc.richtext")
                 }
-                .help("Export the timeline as a PDF — or drag it out another application")
+                .help("Export the timeline as a PDF — or drag it into another app")
                 .onDrag { shareableTimeline.pdfDragProvider() }
 
                 Button(action: exportPNG) {
                     Label("Export PNG", systemImage: "photo")
                 }
-                .help("Export the timeline as a PNG image — or drag it out another application")
+                .help("Export the timeline as a PNG image — or drag it into another app")
                 // Drag-out lives here, not on the canvas, because the canvas
                 // drag gesture is reserved for moving events.
                 .onDrag { shareableTimeline.dragProvider() }
