@@ -17,6 +17,10 @@ struct ShareableTimeline: Transferable {
         .suggestedFileName { $0.fileName }
     }
 
+    /// Tags drags from the export buttons, so Timeline's own canvas can
+    /// refuse them instead of lighting up as a drop target.
+    static let dragMarker = UTType(exportedAs: "com.philipbl.timeline.export-drag")
+
     /// Extension-less base name; the system appends the type's extension.
     var baseName: String {
         let base = title.isEmpty ? "timeline" : title
@@ -56,6 +60,12 @@ struct ShareableTimeline: Transferable {
                 do { completion(try render(config, dark), nil) }
                 catch { completion(nil, error) }
             }
+            return nil
+        }
+        provider.registerDataRepresentation(
+            forTypeIdentifier: Self.dragMarker.identifier, visibility: .all
+        ) { completion in
+            completion(Data(), nil)
             return nil
         }
         // Chromium-based apps (Slack, Chrome, VS Code, Discord…) only take
