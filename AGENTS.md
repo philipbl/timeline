@@ -7,8 +7,10 @@ public at github.com/philipbl/timeline.
 
 Toolchain: Swift Package Manager only (no Xcode project) — Command Line Tools,
 Swift 6.x, macOS 26 SDK; deployment target macOS 14. Package is in
-`TimelineApp/` (one dependency: Yams). The old Python/ReportLab CLI
-(`timeline.py`) is gone; renderer comments that mention it are historical.
+`TimelineApp/` (dependencies: Yams, and llama.cpp as a prebuilt
+`binaryTarget` xcframework pinned to a release — no Xcode/Metal compile).
+The old Python/ReportLab CLI (`timeline.py`) is gone; renderer comments that
+mention it are historical.
 
 ## Current state
 
@@ -16,6 +18,23 @@ Swift 6.x, macOS 26 SDK; deployment target macOS 14. Package is in
   of as a bitmap (~430–770 MB → ~96 MB for a year-long timeline). v2.3.0
   added click-an-empty-day-to-add and tentative events. `main` is the
   release branch.
+- **Unreleased on `main`, planned v2.4.0** (merged 2026-11-06; Philip is
+  testing before tagging). Tag message: `v2.4.0 — import events from
+  images`. The release workflow's body is only install instructions, so
+  add these notes above them (`gh release edit v2.4.0 --notes-file …`):
+
+  > - **Import events from images.** Drop or paste (⇧⌘V) photos,
+  >   screenshots, or PDFs onto a timeline. Timeline finds the dated events
+  >   and opens a sheet to check, edit, and import them in one undoable
+  >   step, showing the page being scanned while it reads. It uses Google's
+  >   Gemma 4 model, running entirely on your Mac (an optional ~5.2 GB
+  >   download on Apple silicon; manage it in Settings → Image Import).
+  >   Without it, basic text recognition is used.
+  > - **⌘N adds an event**, like the + button. New Timeline moves to ⇧⌘N.
+  > - Fixed: pressing Return twice in quick add no longer overwrites the
+  >   event you just added.
+  > - Fixed: a range like "Nov 20 – Dec 30, 2025" applies the year to both
+  >   dates.
 - Deferred ideas (discussed, not built): drag across empty days to create a
   range event; a hover cue showing which day a click would add.
 - Known gaps: no VoiceOver (the canvas is one flat bitmap — biggest gap); no
@@ -39,6 +58,11 @@ same binary:
 - `--render in.timeline out.png|pdf [--dark]` — headless render
 - `--compare a.png b.png <tolerance>` — golden-image diff (used by CI)
 - `--mcp` — MCP server over stdio
+- `--extract-events file… [--basic]` — run image import headlessly (Gemma if
+  downloaded); the way to check extraction without driving the UI
+- `--import-sheet file…` (debug only) — the import sheet alone in an unfocused
+  window, running for real; prints the window number for
+  `screencapture -l <n>`. The way to look at the sheet without driving the UI
 
 After a code change: `make test`. For renderer changes, `--render` a fixture
 (scratch `.timeline` file) and look at the PNG in light and dark, then
@@ -66,6 +90,9 @@ Timeline closes every open document window, so ask first.
 | `EventParser.swift` / `EventIntelligence.swift` | Deterministic NL parser (tested) + `.ics` parsing; optional Apple Intelligence parser (off by default — nondeterministic). |
 | `EventSearch.swift` | ⌘F find panel. |
 | `Exporter.swift` / `Sharing.swift` | PDF/PNG output; `ShareLink`/drag-out `Transferable`. |
+| `ImageImport.swift` | Image/PDF import pipeline: drop/paste inputs → pages, Vision OCR, Gemma prompt + reply parsing (`NAME \| START \| END \| WEEKDAY \| NOTES`), year resolution (MM-DD → next occurrence; weekday mismatch flagged, not "fixed"), basic EventParser fallback, duplicate/out-of-range checks, `adding` (one undo step, stretches explicit bounds). |
+| `Gemma.swift` | `GemmaModel` (download from a pinned Hugging Face revision, SHA-256 check, Settings state; files in `~/Library/Application Support/Timeline/Models`) and `GemmaRunner` actor (llama.cpp + mtmd: image + prompt → reply, thinking on, greedy). |
+| `ImportSheet.swift` | `ImportSession` (runs pages, streams rows, falls back on Gemma failure) and the review sheet; while reading, `ScanPreview` shows the page with Vision's text boxes and a sweeping scan line (static with Reduce Motion). |
 | `MCPServer.swift` | `--mcp` JSON-RPC server; tools `create_timeline`, `read_timeline`, `add_events`, `update_event`, `remove_event`, `add_holiday`, `set_timeline_options`, `render_timeline`. |
 | `DeepLink.swift` | `timeline://add-event` and `timeline://open`. |
 | `Main.swift` | Entry point: CLI modes, else the SwiftUI app. |
@@ -114,6 +141,10 @@ the YAML/MCP round-trip tests in `SelfTests`.
   `editingEventID`, `isNewEvent` (+ button), `isNewOnCanvas` (click-added).
 - Drop text / calendar events (`.ics`) on the canvas → parsed into an event.
   ⇧⌘V creates one from clipboard text; ⇧⌘C copies the image.
+- Drop/paste (⇧⌘V) images or PDFs → import sheet (rows stream in; check,
+  edit, import). First time without the model: alert offering the Gemma
+  download; "Not Now" is remembered (`gemmaDownloadDeclined`) and uses the
+  basic importer. Intel Macs always use the basic importer.
 
 ## Patterns & gotchas
 
@@ -149,6 +180,20 @@ the YAML/MCP round-trip tests in `SelfTests`.
   stale binary keeps serving old tools — `swift build -c release` after MCP
   changes. Installed plugins are a cached snapshot: bump
   `.claude-plugin/plugin.json` `version` and run `claude plugin update`.
+- Gemma: chosen by a bake-off (Nov 2026) over Apple's on-device model —
+  image + OCR text with thinking on got 7/7 on real photos; image-only or
+  thinking-off missed events, and Apple's model ignored the output format.
+  Thinking costs ~25 s per image on an M3 Pro.
+- llama.cpp's C API can't run Jinja, so `GemmaRunner` hand-writes Gemma 4's
+  chat format (`<|turn>…<turn|>`; `<|think|>` in the system turn enables
+  thinking; the answer follows `<channel|>`). Re-check it if the model or
+  llama.cpp release changes. Bumping llama.cpp: new URL + checksum in
+  `Package.swift` (the `sha256` of the zip).
+- `GGML_METAL_NO_RESIDENCY` is set before the llama backend starts:
+  residency sets assert at exit if a model is still loaded, so quitting
+  mid-import would crash.
+- `make app` copies `llama.framework` into `Contents/Frameworks` and signs
+  it; the executable has an `@executable_path/../Frameworks` rpath.
 - CI runners may have older Xcode — guard macOS-26-only APIs with `#if compiler`
   + `#available`.
 

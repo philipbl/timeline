@@ -44,6 +44,54 @@ enum Main {
             }
         }
 
+        // Image import without the UI: Timeline --extract-events file… [--basic]
+        // Prints NAME | START | END | WEEKDAY | NOTES per event found.
+        if args.count >= 3, args[1] == "--extract-events" {
+            let items = args.dropFirst(2).filter { $0 != "--basic" }
+                .map { ImportItem.file(URL(fileURLWithPath: $0)) }
+            Task {
+                let useGemma = await GemmaModel.isSupported
+                    && GemmaModel.shared.state == .ready && !args.contains("--basic")
+                for page in ImageImport.pages(from: items) {
+                    do {
+                        for event in try await ImageImport.read(
+                            page, today: .today(), useGemma: useGemma) {
+                            print([event.name, event.start.description,
+                                   event.end?.description ?? "NONE",
+                                   event.printedWeekday ?? "NONE", event.notes]
+                                .joined(separator: " | "))
+                        }
+                    } catch {
+                        FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
+                    }
+                }
+                await GemmaRunner.shared.unload()
+                exit(0)
+            }
+            dispatchMain()
+        }
+
+        #if DEBUG
+        // The import sheet in its own window, to look at without driving the
+        // app: Timeline --import-sheet file… Prints the window number
+        // (screencapture -l <number>).
+        if args.count >= 3, args[1] == "--import-sheet" {
+            let items = args.dropFirst(2).map { ImportItem.file(URL(fileURLWithPath: $0)) }
+            MainActor.assumeIsolated {
+                NSApplication.shared.setActivationPolicy(.accessory)
+                let sheet = ImportSheet(
+                    session: ImportSession(items: items, download: false, existing: []),
+                    config: TimelineConfig(), onImport: { _ in exit(0) }, onCancel: { exit(0) })
+                let window = NSWindow(contentViewController: NSHostingController(rootView: sheet))
+                window.setContentSize(NSSize(width: 720, height: 480))
+                window.orderFrontRegardless()  // without taking focus
+                print(window.windowNumber)
+                fflush(stdout)
+                NSApplication.shared.run()
+            }
+        }
+        #endif
+
         // Golden-image check: Timeline --compare a.png b.png maxPercent
         if args.count >= 5, args[1] == "--compare" {
             guard let threshold = Double(args[4]),

@@ -25,6 +25,12 @@ form, watch the timeline render live, and export to PDF or PNG.
   per-event overrides
 - **Done events** — struck through and grayed out
 - **Tentative events** — hollow dot or dashed bar, italic label
+- **Import from images** — drop a photo of a flyer, an invitation, a
+  screenshot, handwritten notes, or a PDF on the canvas (or paste one with
+  ⇧⌘V) and review the dated events found in it before importing. Uses
+  Google's Gemma 4 (E4B), downloaded on first use (~5.2 GB, Apple silicon)
+  and run entirely on your Mac; without it, basic text recognition is used.
+  Manage the model in Settings
 - **Export** — paged PDF (US letter, landscape) or single PNG at up to
   288 dpi
 - **Finder integration** — custom document icon and Quick Look
@@ -141,7 +147,18 @@ The app binary doubles as a CLI for scripting and CI:
 ```bash
 TimelineApp/.build/release/TimelineApp --render events.timeline out.pdf
 TimelineApp/.build/release/TimelineApp --render events.timeline out.png
+TimelineApp/.build/release/TimelineApp --extract-events flyer.jpg   # [--basic]
 ```
+
+`--extract-events` prints the events image import would find, one
+`NAME | START | END | WEEKDAY | NOTES` line each (Gemma if downloaded;
+`--basic` for text recognition only).
+
+## Third-party
+
+Image import uses [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT)
+and Google's [Gemma 4](https://ai.google.dev/gemma) model (Apache 2.0),
+which is downloaded separately, not bundled.
 
 ## License
 

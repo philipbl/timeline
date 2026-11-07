@@ -33,6 +33,10 @@ struct ContentView: View {
     @State private var searchQuery = ""
     /// Set to scroll the canvas to a found event; PreviewView resets it.
     @State private var scrollTarget: UUID?
+    /// Image import in progress / under review (drives the import sheet).
+    @State private var importSession: ImportSession?
+    /// Images waiting on the "download Gemma?" prompt.
+    @State private var pendingImport: [ImportItem]?
 
     init(document: TimelineDocument, fileURL: URL?) {
         _document = ObservedObject(initialValue: document)
@@ -64,6 +68,7 @@ struct ContentView: View {
                 onCancelEditor: cancelEditor,
                 onAddEvent: addEvent(on:),
                 onDropText: createEvent(fromText:droppedOn:),
+                onDropImages: importImages,
                 scrollTarget: $scrollTarget,
                 // Relative phrases ("next Friday") resolve against today,
                 // not the timeline's start date
@@ -148,6 +153,36 @@ struct ContentView: View {
                 newEventFromClipboard: pasteEventFromClipboard,
                 copyImage: copyImageToClipboard,
                 findEvent: { isSearching = true }))
+        .sheet(item: $importSession) { session in
+            ImportSheet(
+                session: session,
+                config: document.config,
+                onImport: { candidates in
+                    importSession = nil
+                    document.update(
+                        ImageImport.adding(candidates, to: document.config),
+                        undoManager: undoManager)
+                },
+                onCancel: { importSession = nil })
+        }
+        .alert(
+            "Download Gemma 4 to find events in images?",
+            isPresented: Binding(
+                get: { pendingImport != nil }, set: { if !$0 { pendingImport = nil } }),
+            presenting: pendingImport
+        ) { items in
+            Button("Download (\(ByteCountFormatter.string(fromByteCount: GemmaModel.downloadSize, countStyle: .file)))") {
+                importSession = ImportSession(
+                    items: items, download: true, existing: document.config.events)
+            }
+            Button("Not Now", role: .cancel) {
+                UserDefaults.standard.set(true, forKey: GemmaModel.declinedKey)
+                importSession = ImportSession(
+                    items: items, download: false, existing: document.config.events)
+            }
+        } message: { _ in
+            Text("Google's Gemma 4 model reads flyers, invitations, schedules, and notes. It runs entirely on this Mac — images never leave it. Without it, Timeline uses basic text recognition. You can download or delete it later in Settings.")
+        }
         .onAppear { startWatching() }
         .onChange(of: fileURL) {
             startWatching()
@@ -463,9 +498,29 @@ struct ContentView: View {
         NSPasteboard.general.writeObjects([nsImage])
     }
 
-    /// Create an event from the clipboard text (⇧⌘V). A separate shortcut
-    /// from plain ⌘V so it never shadows pasting into the editor's fields.
+    /// Find events in dropped/pasted images or PDFs and review them in the
+    /// import sheet. Asks to download Gemma first, unless the user declined
+    /// before (then the basic importer runs; Settings can still download).
+    private func importImages(_ items: [ImportItem]) {
+        guard !items.isEmpty else { return }
+        closeEditor()
+        let model = GemmaModel.shared
+        if GemmaModel.isSupported, model.state != .ready, !model.isBusy,
+           !UserDefaults.standard.bool(forKey: GemmaModel.declinedKey) {
+            pendingImport = items
+        } else {
+            // A download already under way: wait for it
+            importSession = ImportSession(
+                items: items, download: model.isBusy, existing: document.config.events)
+        }
+    }
+
+    /// Create an event from the clipboard (⇧⌘V): images/PDFs go to image
+    /// import, text to the parser. A separate shortcut from plain ⌘V so it
+    /// never shadows pasting into the editor's fields.
     private func pasteEventFromClipboard() {
+        let images = ImageImport.items(from: .general)
+        guard images.isEmpty else { return importImages(images) }
         guard let text = NSPasteboard.general.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }

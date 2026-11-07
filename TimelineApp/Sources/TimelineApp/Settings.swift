@@ -28,6 +28,10 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Image Import") {
+                GemmaModelRow()
+            }
+
             Section("New Documents") {
                 Picker("Default color palette", selection: $defaultPalette) {
                     ForEach(TimelineRenderer.palettes, id: \.name) { palette in
@@ -37,6 +41,54 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 260)
+        .frame(width: 460, height: 360)
+    }
+}
+
+/// Download/delete the Gemma 4 model used to find events in images.
+private struct GemmaModelRow: View {
+    @ObservedObject private var model = GemmaModel.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("Gemma 4 model")
+                Spacer()
+                if GemmaModel.isSupported { controls }
+            }
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        switch model.state {
+        case .missing, .failed:
+            Button("Download (\(ByteCountFormatter.string(fromByteCount: GemmaModel.downloadSize, countStyle: .file)))") {
+                Task { await model.download() }
+            }
+        case .downloading(let fraction):
+            ProgressView(value: fraction).frame(width: 100)
+            Button("Cancel") { model.cancelDownload() }
+        case .verifying:
+            ProgressView().controlSize(.small)
+            Text("Verifying…").foregroundStyle(.secondary)
+        case .ready:
+            Text("Installed").foregroundStyle(.secondary)
+            Button("Delete") { model.delete() }
+        }
+    }
+
+    private var caption: String {
+        guard GemmaModel.isSupported else {
+            return "Needs a Mac with Apple silicon. Images are read with basic text "
+                + "recognition instead."
+        }
+        if case .failed(let message) = model.state { return message }
+        return "Finds events in images and PDFs dropped or pasted (⇧⌘V) on a "
+            + "timeline. Runs entirely on this Mac. Without it, basic text "
+            + "recognition is used."
     }
 }
