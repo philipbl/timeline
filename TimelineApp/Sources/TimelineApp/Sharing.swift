@@ -30,31 +30,53 @@ struct ShareableTimeline: Transferable {
     func dragProvider() -> NSItemProvider {
         // suggestedName must be extension-less: the system adds ".png" from
         // the type, so "name.png" here would become "name.png.png".
-        provider(typeIdentifier: UTType.png.identifier) { config, dark in
+        provider(type: .png) { config, dark in
             try Exporter.pngData(for: config, scale: 2, dark: dark)
         }
     }
 
     /// An NSItemProvider that produces the PDF on demand, for `.onDrag`.
     func pdfDragProvider() -> NSItemProvider {
-        provider(typeIdentifier: UTType.pdf.identifier) { config, _ in
+        provider(type: .pdf) { config, _ in
             try Exporter.pdfData(for: config)
         }
     }
 
     private func provider(
-        typeIdentifier: String, render: @escaping (TimelineConfig, Bool) throws -> Data
+        type: UTType, render: @escaping (TimelineConfig, Bool) throws -> Data
     ) -> NSItemProvider {
         let provider = NSItemProvider()
         provider.suggestedName = baseName
         let config = config
         let dark = dark
         provider.registerDataRepresentation(
-            forTypeIdentifier: typeIdentifier, visibility: .all
+            forTypeIdentifier: type.identifier, visibility: .all
         ) { completion in
             DispatchQueue.global(qos: .userInitiated).async {
                 do { completion(try render(config, dark), nil) }
                 catch { completion(nil, error) }
+            }
+            return nil
+        }
+        // Chromium-based apps (Slack, Chrome, VS Code, Discord…) only take
+        // dropped files, not image data, so also offer a file, rendered when
+        // a drop target asks for it.
+        // ponytail: left in the temp folder; macOS clears it after a few days.
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(baseName)
+            .appendingPathExtension(type.preferredFilenameExtension ?? "")
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.fileURL.identifier, visibility: .all
+        ) { completion in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try FileManager.default.createDirectory(
+                        at: file.deletingLastPathComponent(),
+                        withIntermediateDirectories: true)
+                    try render(config, dark).write(to: file)
+                    completion(file.dataRepresentation, nil)
+                } catch { completion(nil, error) }
             }
             return nil
         }
