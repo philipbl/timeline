@@ -43,6 +43,9 @@ same binary:
 - `--mcp` — MCP server over stdio
 - `--extract-events file… [--basic]` — run image import headlessly (Gemma if
   downloaded); the way to check extraction without driving the UI
+- `--import-sheet file…` (debug only) — the import sheet alone in an unfocused
+  window, running for real; prints the window number for
+  `screencapture -l <n>`. The way to look at the sheet without driving the UI
 
 After a code change: `make test`. For renderer changes, `--render` a fixture
 (scratch `.timeline` file) and look at the PNG in light and dark, then
@@ -72,7 +75,7 @@ Timeline closes every open document window, so ask first.
 | `Exporter.swift` / `Sharing.swift` | PDF/PNG output; `ShareLink`/drag-out `Transferable`. |
 | `ImageImport.swift` | Image/PDF import pipeline: drop/paste inputs → pages, Vision OCR, Gemma prompt + reply parsing (`NAME \| START \| END \| WEEKDAY \| NOTES`), year resolution (MM-DD → next occurrence; weekday mismatch flagged, not "fixed"), basic EventParser fallback, duplicate/out-of-range checks, `adding` (one undo step, stretches explicit bounds). |
 | `Gemma.swift` | `GemmaModel` (download from a pinned Hugging Face revision, SHA-256 check, Settings state; files in `~/Library/Application Support/Timeline/Models`) and `GemmaRunner` actor (llama.cpp + mtmd: image + prompt → reply, thinking on, greedy). |
-| `ImportSheet.swift` | `ImportSession` (runs pages, streams rows, falls back on Gemma failure) and the review sheet. |
+| `ImportSheet.swift` | `ImportSession` (runs pages, streams rows, falls back on Gemma failure) and the review sheet; while reading, `ScanPreview` shows the page with Vision's text boxes and a sweeping scan line (static with Reduce Motion). |
 | `MCPServer.swift` | `--mcp` JSON-RPC server; tools `create_timeline`, `read_timeline`, `add_events`, `update_event`, `remove_event`, `add_holiday`, `set_timeline_options`, `render_timeline`. |
 | `DeepLink.swift` | `timeline://add-event` and `timeline://open`. |
 | `Main.swift` | Entry point: CLI modes, else the SwiftUI app. |

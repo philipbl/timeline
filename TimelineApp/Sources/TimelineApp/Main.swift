@@ -71,6 +71,27 @@ enum Main {
             dispatchMain()
         }
 
+        #if DEBUG
+        // The import sheet in its own window, to look at without driving the
+        // app: Timeline --import-sheet file… Prints the window number
+        // (screencapture -l <number>).
+        if args.count >= 3, args[1] == "--import-sheet" {
+            let items = args.dropFirst(2).map { ImportItem.file(URL(fileURLWithPath: $0)) }
+            MainActor.assumeIsolated {
+                NSApplication.shared.setActivationPolicy(.accessory)
+                let sheet = ImportSheet(
+                    session: ImportSession(items: items, download: false, existing: []),
+                    config: TimelineConfig(), onImport: { _ in exit(0) }, onCancel: { exit(0) })
+                let window = NSWindow(contentViewController: NSHostingController(rootView: sheet))
+                window.setContentSize(NSSize(width: 720, height: 480))
+                window.orderFrontRegardless()  // without taking focus
+                print(window.windowNumber)
+                fflush(stdout)
+                NSApplication.shared.run()
+            }
+        }
+        #endif
+
         // Golden-image check: Timeline --compare a.png b.png maxPercent
         if args.count >= 5, args[1] == "--compare" {
             guard let threshold = Double(args[4]),

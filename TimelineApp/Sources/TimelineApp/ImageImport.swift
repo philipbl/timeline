@@ -140,27 +140,38 @@ enum ImageImport {
 
     // MARK: - Reading
 
+    /// What `read` has so far, for the import sheet's preview.
+    enum Step {
+        case image(CGImage)
+        /// Where text was found: Vision's normalized, bottom-left boxes.
+        case text([CGRect])
+    }
+
     /// OCR + Gemma (or the basic parser) on one page. Throws if Gemma fails,
     /// so the caller can fall back.
     static func read(
-        _ page: () -> CGImage?, today: Day, useGemma: Bool
+        _ page: () -> CGImage?, today: Day, useGemma: Bool,
+        onStep: @Sendable (Step) async -> Void = { _ in }
     ) async throws -> [ImportCandidate] {
         guard let image = page() else { return [] }
-        let ocr = recognizeText(in: image)
+        await onStep(.image(image))
+        let lines = recognizeText(in: image)
+        await onStep(.text(lines.map(\.box)))
+        let ocr = lines.map(\.text).joined(separator: "\n")
         guard useGemma else { return basicCandidates(ocr: ocr, today: today) }
         let reply = try await GemmaRunner.shared.reply(
             image: image, prompt: prompt(ocr: ocr, today: today))
         return parseReply(reply, today: today)
     }
 
-    static func recognizeText(in image: CGImage) -> String {
+    static func recognizeText(in image: CGImage) -> [(text: String, box: CGRect)] {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         try? VNImageRequestHandler(cgImage: image).perform([request])
-        return (request.results ?? [])
-            .compactMap { $0.topCandidates(1).first?.string }
-            .joined(separator: "\n")
+        return (request.results ?? []).compactMap { observation in
+            observation.topCandidates(1).first.map { ($0.string, observation.boundingBox) }
+        }
     }
 
     /// Gemma's prompt (after the image). The OCR text comes first: in the
