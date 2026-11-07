@@ -38,7 +38,11 @@ app:
 		$(APP)/Contents/PlugIns/TimelineThumbnail.appex/Contents/Info.plist
 	codesign --force -s - --entitlements TimelineApp/quicklook.entitlements \
 		$(APP)/Contents/PlugIns/TimelineThumbnail.appex
-	codesign --force -s - $(APP)
+	# Ad-hoc, but with the bundle ID as the designated requirement instead
+	# of the default per-build hash: macOS ties the recent-documents list
+	# (Dock menu, Open Recent) to it and wipes the list whenever a build
+	# doesn't match, i.e. after every rebuild or update.
+	codesign --force -s - -r '=designated => identifier "com.philipbl.timeline"' $(APP)
 	# Register this build (and its Quick Look appexes) with LaunchServices
 	# so the active copy wins — stale builds in other paths can't hijack the
 	# .timeline document/Quick Look handlers.

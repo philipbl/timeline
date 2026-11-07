@@ -35,6 +35,8 @@ mention it are historical.
   >   event you just added.
   > - Fixed: a range like "Nov 20 – Dec 30, 2025" applies the year to both
   >   dates.
+  > - Fixed: recent documents (Dock menu, File → Open Recent) no longer
+  >   disappear when Timeline is updated.
 - Deferred ideas (discussed, not built): drag across empty days to create a
   range event; a hover cue showing which day a click would add.
 - Known gaps: no VoiceOver (the canvas is one flat bitmap — biggest gap); no
@@ -192,6 +194,12 @@ the YAML/MCP round-trip tests in `SelfTests`.
 - `GGML_METAL_NO_RESIDENCY` is set before the llama backend starts:
   residency sets assert at exit if a model is still loaded, so quitting
   mid-import would crash.
+- `make app` signs ad-hoc with `identifier "com.philipbl.timeline"` as the
+  designated requirement. The default ad-hoc requirement is the build's
+  cdhash, and `sharedfilelistd` wipes the app's recent documents (Dock
+  menu, Open Recent) whenever a build doesn't match it. Tradeoff: anything
+  signed with that identifier satisfies it, including for privacy (TCC)
+  grants.
 - `make app` copies `llama.framework` into `Contents/Frameworks` and signs
   it; the executable has an `@executable_path/../Frameworks` rpath.
 - CI runners may have older Xcode — guard macOS-26-only APIs with `#if compiler`
