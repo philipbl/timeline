@@ -18,6 +18,23 @@ mention it are historical.
   of as a bitmap (~430–770 MB → ~96 MB for a year-long timeline). v2.3.0
   added click-an-empty-day-to-add and tentative events. `main` is the
   release branch.
+- **Unreleased on `main`, planned v2.4.0** (merged 2026-11-06; Philip is
+  testing before tagging). Tag message: `v2.4.0 — import events from
+  images`. The release workflow's body is only install instructions, so
+  add these notes above them (`gh release edit v2.4.0 --notes-file …`):
+
+  > - **Import events from images.** Drop or paste (⇧⌘V) photos,
+  >   screenshots, or PDFs onto a timeline. Timeline finds the dated events
+  >   and opens a sheet to check, edit, and import them in one undoable
+  >   step, showing the page being scanned while it reads. It uses Google's
+  >   Gemma 4 model, running entirely on your Mac (an optional ~5.2 GB
+  >   download on Apple silicon; manage it in Settings → Image Import).
+  >   Without it, basic text recognition is used.
+  > - **⌘N adds an event**, like the + button. New Timeline moves to ⇧⌘N.
+  > - Fixed: pressing Return twice in quick add no longer overwrites the
+  >   event you just added.
+  > - Fixed: a range like "Nov 20 – Dec 30, 2025" applies the year to both
+  >   dates.
 - Deferred ideas (discussed, not built): drag across empty days to create a
   range event; a hover cue showing which day a click would add.
 - Known gaps: no VoiceOver (the canvas is one flat bitmap — biggest gap); no
